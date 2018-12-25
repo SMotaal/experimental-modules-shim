@@ -1,0 +1,4 @@
+{
+  const Module = ModuleScope.Module;
+
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@smotaal/modules-alpha",
+  "version": "0.0.1",
+  "devDependencies": {
+    "rollup": "*"
+  }
+}
