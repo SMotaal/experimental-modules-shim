@@ -1,7 +1,7 @@
 const dirname = __dirname;
 const bundles = {
   modules: {
-    input: `${dirname}/lib/modules.mjs`,
+    input: `${dirname}/lib/modules.js`,
     output: {
       path: `${dirname}/dist`,
     },
@@ -27,7 +27,7 @@ const bundle = (name, format = 'umd', filename = '', {output: {path, ...output} 
 
 const defaults = {
   context: 'this',
-  output: {sourcemap: 'inline'},
+	output: {sourcemap: true, preferConst: true},
 };
 
 export default [bundle('modules', 'es', '.mjs'), bundle('modules', 'iife', '.js')];

@@ -1,19 +1,183 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>SMotaal's Modules</title>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover"
-    />
-  </head>
+	<head>
+		<title>SMotaal's Modules</title>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover"
+		/>
+		<style>
+			output.console,
+			output.console pre,
+			output.console code {
+				font-family: 'Iosevka', 'Fira Code', monospace;
+				background-clip: padding-box;
+				margin: 0;
+				/* border-collapse: collapse; */
+			}
 
-  <body>
-    <script type="module">
-      import './lib/modules.mjs';
-      import './modules.spec.js';
-      console.clear();
-    </script>
-  </body>
+			output.console pre {
+				padding: 0.5em 0.25em;
+				border: 1px solid transparent;
+			}
+
+      output.console pre:not(.group) {
+        border-bottom-color: #9994;
+			}
+
+			output.console code {
+				padding: 0;
+			}
+
+			output.console * + *::before {
+				display: inline-block;
+				content: '';
+				width: 0.5em;
+			}
+
+			output.console hr {
+				border-style: solid;
+				border-color: #9994;
+			}
+
+			output.console .log {
+				color: #333;
+			}
+
+			output.console .group > :first-child {
+				font-weight: bold;
+				display: list-item;
+				list-style-type: none;
+				padding-top: 0.5em;
+				padding-bottom: 0.5em;
+				margin-left: 0.75em;
+			}
+
+			output.console .group > :first-child::before {
+				color: #9999;
+				display: inline-block;
+				width: 0;
+				position: relative;
+				left: -0.875em;
+				/* text-align: center; */
+				content: '▸';
+			}
+
+			output.console .group > :not(:first-child) {
+				padding-left: 1em;
+        border-left-color: #9994;
+        border-bottom-color: #9994;
+			}
+
+			output.console .warn {
+				background-color: #FEF9E7;
+				/* background-image: linear-gradient(to left,#9999 0%, #9999 100%); */
+			}
+			output.console .info {
+				color: green;
+			}
+			output.console .error {
+				color: red;
+			}
+		</style>
+	</head>
+
+	<body>
+		<script>
+			if (document.currentScript) {
+				const output = document.body.insertBefore(document.createElement('output'), document.currentScript);
+
+				output.className = 'console';
+
+				const Span = (...content) => {
+					const span = document.createElement('span');
+					content.length && span.append(...content);
+					return span;
+				};
+
+				const textify = (item, type) =>
+					Span(
+						((type = item === null ? null : typeof item) === 'object' &&
+							(('textContent' in item && item instanceof Node && item) ||
+								(item instanceof String && new Text(item)) ||
+								new Text(JSON.stringify(item)))) ||
+							new Text(type !== 'symbol' ? item : ''),
+					); // item != null &&
+
+				const append = (parent, ...items) => {
+					const fragment = document.createDocumentFragment();
+					for (const item of items) fragment.appendChild(textify(item));
+					const element = parent.appendChild(document.createElement('code'));
+					element.appendChild(fragment);
+					return element;
+				};
+
+				const Parent = ({tag = 'pre', class: className, ...properties}) =>
+					Object.assign(document.createElement(tag), {className, ...properties});
+
+				const spans = {
+					log: Parent({class: 'log'}),
+					warn: Parent({class: 'warn'}),
+					error: Parent({class: 'error'}),
+					info: Parent({class: 'info'}),
+					group: Parent({class: 'group log'}),
+					groupCollapsed: Parent({class: 'groupCollapsed group log'}),
+					groupEnd: Parent({class: 'groupEnd', hidden: true}),
+				};
+
+				{
+					const {log, warn, error, info, group, groupCollapsed, groupEnd} = console;
+
+					let parent = output;
+
+					({
+						log: console.log = log,
+						warn: console.warn = warn,
+						error: console.error = error,
+						info: console.info = info,
+						group: console.group = group,
+						groupEnd: console.groupEnd = groupEnd,
+						groupCollapsed: console.groupCollapsed = groupCollapsed,
+					} = new class {
+						log() {
+							parent.appendChild;
+							append(parent.appendChild(spans.log.cloneNode(true)), ...arguments);
+							log(...arguments);
+						}
+						warn() {
+							append(parent.appendChild(spans.warn.cloneNode(true)), ...arguments);
+							warn(...arguments);
+						}
+						error() {
+							append(parent.appendChild(spans.error.cloneNode(true)), ...arguments);
+							error(...arguments);
+						}
+						info() {
+							append(parent.appendChild(spans.info.cloneNode(true)), ...arguments);
+							info(...arguments);
+						}
+						group() {
+							append((parent = parent.appendChild(spans.group.cloneNode(true))), ...arguments);
+							group(...arguments);
+						}
+						groupCollapsed() {
+							append((parent = parent.appendChild(spans.groupCollapsed.cloneNode(true))), ...arguments);
+							groupCollapsed(...arguments);
+						}
+						groupEnd() {
+							append(parent.appendChild(spans.groupEnd.cloneNode(true)));
+							parent = parent.parentElement;
+							groupEnd();
+						}
+					}());
+				}
+			}
+		</script>
+		<script type="module">
+			import './lib/modules.js';
+			import './modules.spec.js';
+			console.clear();
+		</script>
+	</body>
 </html>

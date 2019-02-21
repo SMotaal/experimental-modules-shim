@@ -3,10 +3,10 @@
 console.clear();
 
 const useDist =
-  import.meta.url.includes('#dist') ||
+  import.meta.url.includes('?dist') ||
   (typeof process === 'object' && process && process.argv && process.argv.includes('--dist'));
 
 (async () => {
-  await import(useDist ? './dist/modules.mjs' : './lib/modules.mjs');
+  await import(useDist ? './dist/modules.mjs' : './lib/modules.js');
   await import('./modules.spec.js');
 })();
