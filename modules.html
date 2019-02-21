@@ -22,8 +22,8 @@
 				border: 1px solid transparent;
 			}
 
-      output.console pre:not(.group) {
-        border-bottom-color: #9994;
+			output.console pre:not(.group) {
+				border-bottom-color: #9994;
 			}
 
 			output.console code {
@@ -66,12 +66,12 @@
 
 			output.console .group > :not(:first-child) {
 				padding-left: 1em;
-        border-left-color: #9994;
-        border-bottom-color: #9994;
+				border-left-color: #9994;
+				border-bottom-color: #9994;
 			}
 
 			output.console .warn {
-				background-color: #FEF9E7;
+				background-color: #fef9e7;
 				/* background-image: linear-gradient(to left,#9999 0%, #9999 100%); */
 			}
 			output.console .info {
@@ -96,14 +96,23 @@
 					return span;
 				};
 
-				const textify = (item, type) =>
-					Span(
-						((type = item === null ? null : typeof item) === 'object' &&
-							(('textContent' in item && item instanceof Node && item) ||
-								(item instanceof String && new Text(item)) ||
-								new Text(JSON.stringify(item)))) ||
-							new Text(type !== 'symbol' ? item : ''),
-					); // item != null &&
+				const textify = (item, type, body) =>
+					((type = item === null ? null : typeof item) === 'object' &&
+						(('textContent' in item && item instanceof Node && Span(item)) ||
+							(item instanceof Error &&
+								Object.assign(Span(new Text(`${item}`)), {className: 'error', title: `${item.stack}`})) ||
+							(item instanceof String && Span(new Text(item))) ||
+							(item instanceof Promise &&
+								(item.catch(reason => reason).then(content => body.appendChild(textify(content))),
+								Span(new Text('Promise { '), (body = Span()), new Text(' }')))) ||
+							(item instanceof Array &&
+								Span(
+									new Text('[ '),
+									...[].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1),
+									new Text(' ]'),
+								)) ||
+							Span(new Text(JSON.stringify(item))))) ||
+					Span(new Text(type !== 'symbol' ? item : ''));
 
 				const append = (parent, ...items) => {
 					const fragment = document.createDocumentFragment();
