@@ -24,22 +24,19 @@
 						const node = typeof process === 'object';
 						const format = (node && '%s') || '';
 						const test = ƒ =>
-							(async () => await ƒ())()
+							((ƒ.toString = () => `${Function.toString.call(ƒ)}`.replace(/[^]*?=>/, '').trim()), async () => await ƒ())()
 								.then(result => () => log(result))
 								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
 								.then(log => group(format, ƒ) || log() || groupEnd());
-						test(ƒ => ({this: this, arguments: arguments}));
-						test(ƒ => _an_undefined_variable_);
-						test(ƒ => (_an_undefined_variable_ = 1));
-						test(ƒ => new Object({a: 1}));
+						test(() => ({this: this, arguments: arguments}));
+						test(() => _an_undefined_variable_);
+						test(() => (_an_undefined_variable_ = 1));
+						test(() => new Object({a: 1}));
 						// This ones causes a Proxy/inspect related error for some reason
-						test(ƒ => (Object = 1));
-						test(ƒ => Array(Object({a: String(1)})));
-						test(
-							ƒ =>
-								new Array(new String('a'), new Number(2), new Promise(resolve => resolve(new Error('Not an Error!')))),
-						);
-						test(ƒ => new Promise(resolve => setTimeout(resolve)));
+						test(() => (Object = 1));
+						test(() => Array(Object({a: String(1)})));
+						test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
+						test(() => new Promise(resolve => setTimeout(resolve)));
 					},
 					ModuleScope,
 				);

@@ -80,6 +80,68 @@
 			output.console .error {
 				color: red;
 			}
+
+			output.console .number-value,
+			output.console .Number-object {
+				color: cornflowerblue;
+			}
+			output.console .boolean-value,
+			output.console .Boolean-object {
+				color: steelblue;
+			}
+			output.console .undefined-value,
+			output.console .null-value {
+				color: #999;
+			}
+
+			output.console .string-value {
+				color: #666;
+			}
+
+			output.console code span .String-object {
+				--class: 'String';
+			}
+
+			output.console * {
+				quotes: none;
+			}
+
+			output.console .object-value {
+				quotes: '{ ' ' }';
+			}
+
+			output.console [data-kind='Array'] {
+				quotes: '[ ' ' ]';
+			}
+
+			output.console .string-value {
+				quotes: '"' '"';
+			}
+			output.console .String-object {
+				quotes: '{ "' '" }';
+			}
+
+			output.console [data-class] {
+				--class: attr(data-class);
+			}
+
+			output.console code span .string-value::before {
+				content: open-quote;
+			}
+
+			output.console code span .string-value::after {
+				content: close-quote;
+			}
+
+			output.console :not([data-kind='Error']).object-value[data-class]::before {
+				content: var(--class, 'Object') ' ' open-quote;
+				display: inline;
+			}
+
+			output.console :not([data-kind='Error']).object-value[data-class]::after {
+				content: close-quote;
+				display: inline;
+			}
 		</style>
 	</head>
 
@@ -96,23 +158,52 @@
 					return span;
 				};
 
-				const textify = (item, type, body) =>
-					((type = item === null ? null : typeof item) === 'object' &&
-						(('textContent' in item && item instanceof Node && Span(item)) ||
-							(item instanceof Error &&
-								Object.assign(Span(new Text(`${item}`)), {className: 'error', title: `${item.stack}`})) ||
-							(item instanceof String && Span(new Text(item))) ||
-							(item instanceof Promise &&
-								(item.catch(reason => reason).then(content => body.appendChild(textify(content))),
-								Span(new Text('Promise { '), (body = Span()), new Text(' }')))) ||
-							(item instanceof Array &&
-								Span(
-									new Text('[ '),
-									...[].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1),
-									new Text(' ]'),
-								)) ||
-							Span(new Text(JSON.stringify(item))))) ||
-					Span(new Text(type !== 'symbol' ? item : ''));
+				const textify = (item, type, body) => {
+					let kind;
+					const element =
+						((type = item === null ? null : typeof item) === 'object' &&
+							(('textContent' in item && item instanceof (kind = Node) && Span(item)) ||
+								(item instanceof (kind = Error) &&
+									Object.assign(Span(new Text(`${item}`)), {className: 'error', title: `${item.stack}`})) ||
+								(item instanceof (kind = String) && Span(new Text(item))) ||
+								(item instanceof (kind = Promise) &&
+									(item.then(content => body.append(Span(new Text('<resolved> ')), textify(content))),
+									item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason))),
+									Span((body = Span())))) ||
+								(item instanceof (kind = Array) &&
+									Span(...[].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1))) ||
+								((kind = undefined), Span(new Text(JSON.stringify(item).replace(/^\{\s*([^]*)\s*\}$/, '$1')))))) ||
+						(type === 'function' && Span(new Text(`${item}`))) ||
+						Span(new Text(type !== 'symbol' ? `${item}` : ''));
+
+					if (element && element.classList) {
+						let className;
+
+						if (type === 'object') {
+							className = (Object.getPrototypeOf(item) || Object).constructor.name;
+							kind && kind.name && (kind = kind.name);
+							element.classList.add(`${className || kind}-object`);
+						} else if (type === 'function') {
+							className = Object.getPrototypeOf(item).constructor.name;
+							type =
+								className === 'GeneratorFunction'
+									? 'generator-function'
+									: !Object.prototype.hasOwnProperty.call(item, 'prototype')
+									? 'arrow-function'
+									: !item.prototype ||
+									  item.prototype.constructor !== item ||
+									  Object.getOwnPropertyDescriptor(item, 'prototype').writable
+									? 'function'
+									: 'class';
+							element.classList.add(`${className}-object`);
+						}
+						element.classList.add(`${type}-value`);
+						className && element.setAttribute('data-class', className);
+						kind && element.setAttribute('data-kind', kind);
+						item == null || (type === 'object' && !element.classList.add());
+					}
+					return element;
+				};
 
 				const append = (parent, ...items) => {
 					const fragment = document.createDocumentFragment();
