@@ -4,8 +4,13 @@
 	"version": "0.0.0-alpha.1",
 	"scripts": {
 		"serve": "http-server --cors -s",
-		"bundle": "rollup -c rollup.config.js"
+		"bundle": "rollup -c rollup.config.js",
+		"start": "node .",
+		"start:exm": "node --experimental-modules . --dist",
+		"start:cjs": "node . --dist"
 	},
+	"type": "module",
+	"exports": {},
 	"devDependencies": {
 		"http-server": "*",
 		"rollup": "*",
