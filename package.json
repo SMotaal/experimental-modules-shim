@@ -6,8 +6,10 @@
 		"serve": "http-server --cors -s",
 		"bundle": "rollup -c rollup.config.js",
 		"start": "node .",
-		"start:exm": "node --experimental-modules . --dist",
-		"start:cjs": "node . --dist"
+		"start:esm": "node --experimental-modules .",
+		"start:esm:dev": "node --experimental-modules . --dev",
+		"start:cjs": "node .",
+		"start:cjs:dev": "node . --dev"
 	},
 	"type": "module",
 	"exports": {},
