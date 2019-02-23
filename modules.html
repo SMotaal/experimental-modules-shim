@@ -172,7 +172,14 @@
 									Span((body = Span())))) ||
 								(item instanceof (kind = Array) &&
 									Span(...[].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1))) ||
-								((kind = undefined), Span(new Text(JSON.stringify(item).replace(/^\{\s*([^]*)\s*\}$/, '$1')))))) ||
+								((kind = undefined),
+								Span(
+									new Text(
+										JSON.stringify(item, null, 1).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
+											(a.includes('\n') ? a.replace(/\s*\n(\s?)\s*/g, '$1') : a).replace(/"([^\s\d]\S*)": /g, '$1: '),
+										),
+									),
+								)))) ||
 						(type === 'function' && Span(new Text(`${item}`))) ||
 						Span(new Text(type !== 'symbol' ? `${item}` : ''));
 
@@ -224,14 +231,16 @@
 					group: Parent({class: 'group log'}),
 					groupCollapsed: Parent({class: 'groupCollapsed group log'}),
 					groupEnd: Parent({class: 'groupEnd', hidden: true}),
+					trace: Parent({class: 'trace'}),
 				};
 
 				{
-					const {log, warn, error, info, group, groupCollapsed, groupEnd} = console;
+					const {dir, log, warn, error, info, group, groupCollapsed, groupEnd, trace} = console;
 
 					let parent = output;
 
 					({
+						dir: console.dir = dir,
 						log: console.log = log,
 						warn: console.warn = warn,
 						error: console.error = error,
@@ -239,36 +248,53 @@
 						group: console.group = group,
 						groupEnd: console.groupEnd = groupEnd,
 						groupCollapsed: console.groupCollapsed = groupCollapsed,
+						trace: console.trace = trace,
 					} = new class {
 						log() {
-							parent.appendChild;
 							append(parent.appendChild(spans.log.cloneNode(true)), ...arguments);
 							log(...arguments);
 						}
+
+						dir() {
+							console.log(arguments[0]);
+						}
+
 						warn() {
 							append(parent.appendChild(spans.warn.cloneNode(true)), ...arguments);
 							warn(...arguments);
 						}
+
 						error() {
 							append(parent.appendChild(spans.error.cloneNode(true)), ...arguments);
 							error(...arguments);
 						}
+
 						info() {
 							append(parent.appendChild(spans.info.cloneNode(true)), ...arguments);
 							info(...arguments);
 						}
+
 						group() {
 							append((parent = parent.appendChild(spans.group.cloneNode(true))), ...arguments);
 							group(...arguments);
 						}
+
 						groupCollapsed() {
 							append((parent = parent.appendChild(spans.groupCollapsed.cloneNode(true))), ...arguments);
 							groupCollapsed(...arguments);
 						}
+
 						groupEnd() {
 							append(parent.appendChild(spans.groupEnd.cloneNode(true)));
 							parent = parent.parentElement;
 							groupEnd();
+						}
+
+						trace() {
+							const stack = new Error('').stack.replace(/^.*\n.*\n/, '\n');
+							append(parent.appendChild(spans.trace.cloneNode(true)), 'Trace:', ...arguments, stack);
+							log(`Trace:`, ...arguments, new Error('').stack.replace(/^.*\n.*\n/, '\n'), stack);
+							// trace(...arguments);
 						}
 					}());
 				}
