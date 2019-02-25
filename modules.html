@@ -17,6 +17,15 @@
 				/* border-collapse: collapse; */
 			}
 
+			output.console .stdout {
+				color: black;
+			}
+
+			output.console .stderr,
+			output.console .error {
+				color: red;
+			}
+
 			output.console pre {
 				padding: 0.5em 0.25em;
 				border: 1px solid transparent;
@@ -27,12 +36,13 @@
 				border-bottom-color: #9994;
 			}
 
-			output.console code {
+			output.console code,
+			output.console .mark {
 				padding: 0;
 				white-space: pre;
 			}
 
-			output.console * + *::before {
+			output.console code > * + *::before {
 				display: inline-block;
 				content: '';
 				width: 0.5em;
@@ -43,11 +53,10 @@
 				border-color: #9994;
 			}
 
-			output.console .log {
-				color: #333;
+			output.console .console-log {
 			}
 
-			output.console .group > :first-child {
+			output.console .console-group > :first-child {
 				font-weight: bold;
 				display: list-item;
 				list-style-type: none;
@@ -56,7 +65,7 @@
 				margin-left: 0.75em;
 			}
 
-			output.console .group > :first-child::before {
+			output.console .console-group > :first-child::before {
 				color: #9999;
 				display: inline-block;
 				width: 0;
@@ -66,22 +75,21 @@
 				content: '▾';
 			}
 
-			output.console .group > :not(:first-child) {
+			output.console .console-group > :not(:first-child) {
 				padding-left: 1em;
 				border-left-color: #9994;
 				border-bottom-color: #9994;
 			}
 
-			output.console .warn {
+			output.console .console-warn {
 				background-color: #fef9e7;
 			}
 
-			output.console .info {
+			output.console .console-info {
 				color: green;
 			}
 
-			output.console .error {
-				color: red;
+			output.console .console-error {
 			}
 
 			output.console .number-value,
@@ -101,49 +109,30 @@
 				color: #666;
 			}
 
-			output.console code span .String-object {
-				--class: 'String';
+			output.console .object-body {
+				display: grid;
+				grid-template: 'outer inner' / min-content minmax(max-content, auto);
+				grid-column-gap: 0.5em;
+				white-space: normal;
 			}
 
-			output.console * {
-				quotes: none;
+			output.console .object-body > slot {
+				white-space: normal;
 			}
 
-			output.console .object-value {
-				quotes: '{ ' ' }';
+			output.console .object-body > slot > * {
+				grid-column: inner;
+				justify-self: start;
 			}
 
-			output.console [data-kind='Array'] {
-				quotes: '[ ' ' ]';
+			output.console .object-body > .mark,
+			output.console .object-body > slot > .indent {
+				grid-column: outer;
+				justify-self: end;
 			}
 
-			output.console .string-value {
-				quotes: '"' '"';
-			}
-			output.console .String-object {
-				quotes: '{ "' '" }';
-			}
-
-			output.console [data-class] {
-				--class: attr(data-class);
-			}
-
-			output.console code span .string-value::before {
-				content: open-quote;
-			}
-
-			output.console code span .string-value::after {
-				content: close-quote;
-			}
-
-			output.console :not([data-kind='Error']).object-value[data-class]::before {
-				content: var(--class, 'Object') ' ' open-quote;
-				display: inline;
-			}
-
-			output.console :not([data-kind='Error']).object-value[data-class]::after {
-				content: close-quote;
-				display: inline;
+			output.console .object-body > slot > .comma {
+				display: none;
 			}
 		</style>
 	</head>
@@ -151,9 +140,39 @@
 	<body>
 		<script>
 			if (document.currentScript) {
+				const {ELEMENT_NODE, TEXT_NODE} = document;
+
 				const output = document.body.insertBefore(document.createElement('output'), document.currentScript);
 
 				output.className = 'console';
+
+				const Mark = (textContent, properties) => {
+					let tag = 'span',
+						className;
+					properties && ({tag = tag, class: className = className, ...properties} = properties);
+					return Object.assign(document.createElement(tag), {
+						...properties,
+						className: `mark ${className || ''}`.trim(),
+						textContent,
+					});
+				};
+
+				// const Break = () => document.createElement('br');
+				const Break = () => Mark('\n', {class: 'break'});
+				const Indent = () => Mark('\t', {class: 'indent'});
+				const Comma = () => Mark(', ', {class: 'comma'});
+
+				const Fragment = (...items) => {
+					const fragment = document.createDocumentFragment();
+					for (const item of items) fragment.appendChild(item);
+					return fragment;
+				};
+
+				Fragment.each = (ƒ, ...items) => {
+					const fragment = document.createDocumentFragment();
+					for (const item of items) fragment.appendChild(ƒ(item));
+					return fragment;
+				};
 
 				const Span = (...content) => {
 					const span = document.createElement('span');
@@ -161,19 +180,62 @@
 					return span;
 				};
 
+				{
+					for (const [name, fragment] of Object.entries({
+						array: Fragment(Mark('[', {class: 'head'}), document.createElement('slot'), Mark(']')),
+						object: Fragment(Mark('{', {class: 'head'}), document.createElement('slot'), Mark('}')),
+						string: Fragment(Mark('"'), document.createElement('slot'), Mark('"')),
+					})) {
+						Fragment[name] = () => fragment.cloneNode(true);
+					}
+				}
+
+				const Block = ({tag = 'pre', class: className, ...properties}) =>
+					Object.assign(document.createElement(tag), {className, ...properties});
+
+				{
+					for (const [name, span] of Object.entries({
+						'console.log': Block({class: 'console-log stdout'}),
+						'console.warn': Block({class: 'console-warn stdout'}),
+						'console.error': Block({class: 'console-error stderr'}),
+						'console.info': Block({class: 'console-info stdout'}),
+						'console.dir': Block({class: 'console-dir stdout'}),
+						'console.trace': Block({class: 'console-trace stdout'}),
+						'console.group': Block({class: 'console-group stdout'}),
+						'console.groupCollapsed': Block({class: 'console-group-collapsed console-group stdout'}),
+						'console.groupEnd': Block({class: 'console-group-end stdout', hidden: true}),
+					})) {
+						Block[name] = () => span.cloneNode(true);
+					}
+				}
+
+				const noop = () => {};
+
+				const timeout = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds || 0));
+
+				const frame =
+					(typeof requestAnimationFrame === 'function' && (() => new Promise(requestAnimationFrame))) ||
+					(() => timeout(10));
+
+				const idle =
+					(typeof requestIdleCallback === 'function' && requestIdleCallback) ||
+					((execute, previous) => ƒ => void (previous = execute(ƒ, previous)))(
+						async (ƒ, previous) => void (await frame(), await previous, await ƒ()),
+					);
+
 				const textify = item => {
 					let type, body, kind;
 					const element =
 						((type = item === null ? null : typeof item) === 'object' &&
-							(('textContent' in item && item instanceof (kind = Node) && Span(item)) ||
+							(('textContent' in item && item instanceof (kind = Element) && Span(item)) ||
 								(item instanceof (kind = Error) &&
 									Object.assign(Span(new Text(`${item}`)), {className: 'error', title: `${item.stack}`})) ||
-								(item instanceof (kind = String) && Span(new Text(item))) ||
-								(item instanceof (kind = Promise) &&
-									(item.then(content => body.append(Span(new Text('<resolved> ')), textify(content))),
-									item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason))),
-									Span((body = Span())))) ||
-								(item instanceof (kind = Array) && Span(...textify.array(item))) ||
+								// (item instanceof (kind = String) && Span(new Text(item))) ||
+								// (item instanceof (kind = Promise) &&
+								// 	(item.then(content => body.append(Span(new Text('<resolved> ')), textify(content))),
+								// 	item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason))),
+								// 	Span((body = Span())))) ||
+								(item instanceof (kind = Array) && textify.array(item)) ||
 								((kind = undefined), Span(textify.object(item))))) ||
 						(type === 'function' && Span(new Text(`${item}`))) ||
 						Span(new Text(type !== 'symbol' ? `${item}` : ''));
@@ -207,41 +269,91 @@
 					return element;
 				};
 
-				textify.array = item => [].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1);
+				textify.array = item => {
+					const span = document.createElement('span');
+					span.className = 'array-span';
+					idle(() => {
+						const name = (item.constructor || Array).name || 'Array';
+						const content = item.length
+							? [].concat(...item.map((v, i) => [Indent(), Span(textify.array.item(v), Comma())]))
+							: [];
+						const root = span;
+						root.append(Fragment.array());
+						const slot = root.querySelector('slot:not([name])') || root.appendChild(document.createElement('slot'));
+						const head = root.querySelector(':scope > .mark.head');
+						!head || !name || head.prepend(new Text(`${name} `));
+						content.length && (slot.append(Break(), ...content), span.classList.add('object-body'));
+					});
+					return span;
+				};
 
-				textify.object = item => new Text(textify.json(item));
+				textify.array.item = textify;
+
+				textify.object = item => {
+					const span = document.createElement('span');
+					span.className = 'object-span';
+					idle(() => {
+						const name = (item.constructor || Object).name || 'Object';
+						const text = textify.json(item);
+						const body = Span();
+						let hasBody;
+						if (item instanceof Promise) {
+							hasBody = true;
+							item.then(content => body.append(Span(new Text('<resolved> ')), textify(content)));
+							item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason)));
+						}
+						if (text.trim()) {
+							hasBody = true;
+							body.appendChild(new Text(text));
+						}
+						const content = hasBody ? [Indent(), body] : [];
+						const root = span;
+						root.append(Fragment.object());
+						const slot = root.querySelector('slot:not([name])') || root.appendChild(document.createElement('slot'));
+						const head = root.querySelector(':scope > .mark.head');
+						!head || !name || head.prepend(new Text(`${name} `));
+						content.length && (slot.append(Break(), ...content), span.classList.add('object-body'));
+					});
+					return span;
+				};
+
+				// textify.object = item => {
+				// 	const body = document.createElement('span');
+				// 	idle(() => body.append(new Text(textify.json(item))));
+				// 	return body;
+				// };
 
 				textify.json = item =>
 					JSON.stringify(item, null, 1).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
 						(a.includes('\n') ? a.replace(/\s*\n(\s?)\s*/g, '$1') : a).replace(/"([^\s\d]\S*)": /g, '$1: '),
 					);
 
-				const append = (parent, ...items) => {
-					const fragment = document.createDocumentFragment();
-					for (const item of items) fragment.appendChild(textify(item));
-					const element = parent.appendChild(document.createElement('code'));
-					element.appendChild(fragment);
-					return element;
+				textify.format = args => {
+					const body = document.createElement('span');
+					let f;
+					args.length > 1 &&
+						args[0] &&
+						typeof args[0] === 'string' &&
+						textify.format.matcher.test(args[0]) &&
+						([f, args] = args);
+					idle(() => body.append(textify.each(...args)));
+					return body;
 				};
 
-				const Parent = ({tag = 'pre', class: className, ...properties}) =>
-					Object.assign(document.createElement(tag), {className, ...properties});
+				textify.each = (...items) => Fragment.each(textify, ...items);
 
-				const spans = {
-					log: Parent({class: 'console.log log'}),
-					warn: Parent({class: 'console.warn warn'}),
-					error: Parent({class: 'console.error error'}),
-					info: Parent({class: 'console.info info'}),
-					group: Parent({class: 'console.group group log'}),
-					groupCollapsed: Parent({class: 'console.groupCollapsed groupCollapsed group log'}),
-					groupEnd: Parent({class: 'console.groupEnd groupEnd', hidden: true}),
-					trace: Parent({class: 'console.trace trace'}),
-				};
+				textify.format.matcher = /(?:[^\\%]|^)%(?:c|d|f|o|O|s|\d+f|\d*\.\d+f)/g;
 
 				{
 					const {dir, log, warn, error, info, group, groupCollapsed, groupEnd, trace} = console;
 
-					let parent = output;
+					let root = output;
+
+					const append = (block, ...items) => {
+						const element = block.appendChild(document.createElement('code'));
+						element.append(...items);
+						return root.appendChild(block);
+					};
 
 					({
 						dir: console.dir = dir,
@@ -254,53 +366,54 @@
 						groupCollapsed: console.groupCollapsed = groupCollapsed,
 						trace: console.trace = trace,
 					} = new class {
-						log() {
-							append(parent.appendChild(spans.log.cloneNode(true)), ...arguments);
-							log(...arguments);
+						log(...args) {
+							append(Block['console.log'](), textify.format(args));
+							log(...args);
 						}
 
-						dir() {
-							console.log(arguments[0]);
+						dir(...args) {
+							append(Block['console.dir'](), textify.object(args[0]));
+							dir(args[0]);
 						}
 
-						warn() {
-							append(parent.appendChild(spans.warn.cloneNode(true)), ...arguments);
-							warn(...arguments);
+						warn(...args) {
+							append(Block['console.warn'](), textify.format(args));
+							warn(...args);
 						}
 
-						error() {
-							append(parent.appendChild(spans.error.cloneNode(true)), ...arguments);
-							error(...arguments);
+						error(...args) {
+							append(Block['console.error'](), textify.format(args));
+							error(...args);
 						}
 
-						info() {
-							append(parent.appendChild(spans.info.cloneNode(true)), ...arguments);
-							info(...arguments);
+						info(...args) {
+							append(Block['console.info'](), textify.format(args));
+							info(...args);
 						}
 
-						group() {
-							append((parent = parent.appendChild(spans.group.cloneNode(true))), ...arguments);
-							group(...arguments);
-						}
-
-						groupCollapsed() {
-							append((parent = parent.appendChild(spans.groupCollapsed.cloneNode(true))), ...arguments);
-							groupCollapsed(...arguments);
-						}
-
-						groupEnd() {
-							append(parent.appendChild(spans.groupEnd.cloneNode(true)));
-							parent = parent.parentElement;
-							groupEnd();
-						}
-
-						trace() {
+						trace(...args) {
 							const stack = new Error('').stack
 								.replace(/^.*\n.*?\n+/, '\n')
 								.replace(/^(?:    |\t)?/gm, '\u2003\u2003\u2003\u2003');
-							append(parent.appendChild(spans.trace.cloneNode(true)), 'Trace:', ...arguments, stack);
-							log(`Trace:`, ...arguments, stack);
+							append(Block['console.trace'](), textify.each('Trace:', ...args, stack));
+							log(`Trace:`, ...args, stack);
 							// trace(...arguments);
+						}
+
+						group(...args) {
+							root = append(Block['console.group'](), textify.format(args));
+							group(...args);
+						}
+
+						groupCollapsed(...args) {
+							root = append(Block['console.groupCollapsed'](), textify.format(args));
+							groupCollapsed(...args);
+						}
+
+						groupEnd(...args) {
+							append(Block['console.groupEnd']());
+							root = root.parentElement;
+							groupEnd();
 						}
 					}());
 				}
