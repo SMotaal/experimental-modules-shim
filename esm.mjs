@@ -16,13 +16,15 @@
 	const specs = './modules.spec.js';
 
 	if (!lib) {
-		return console.error('Cannot find a suitable %O source in %O format', source, mode);
+		console.error('Cannot find a suitable %O source in %O format', source, mode);
 		process && process.exit(1);
+		return;
 	}
 
-	const importModule = mode === 'CJS' ? require : specifier => import(specifier);
+	const importModule = mode === 'CJS' ? require : async specifier => import(specifier);
 
 	await importModule(lib);
+	await new Promise(resolve => setTimeout(resolve, 100));
 	console.clear();
 	console.log(`Running "${specs}" with "${lib}" — ${source} in ${mode}`);
 	importModule(specs);
