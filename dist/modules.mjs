@@ -203,6 +203,10 @@ const ModuleStrapper = (() => {
 			setProperty(context, 'meta', create(null), false, false);
 			setProperty(context.scope, 'meta', context.meta, false, false);
 			setProperty(context.meta, 'url', url);
+
+			// TODO: To be used for top-level await
+			let awaits = void defineProperty(context, 'await', {get: () => awaits, set: value => (awaits = value)});
+
 			freeze(context);
 			return setProperty(module, 'instance', {namespace, context});
 		}
@@ -210,7 +214,9 @@ const ModuleStrapper = (() => {
 		async evaluate(module) {
 			const {bindings, namespace, context} = await module.instantiate();
 			try {
+				// TODO: Ensure single execution
 				await module.evaluator(context, context.export);
+				!context.await || (await context.await);
 				return setProperty(module, 'namespace', namespace);
 			} catch (exception) {
 				console.warn(exception);

@@ -33,17 +33,19 @@
 								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
 								.then(log => group(format, ƒ) || log() || groupEnd())
 						);
-						test(() => ({this: this, arguments: arguments}));
-						test(() => _an_undefined_variable_);
-						test(() => (_an_undefined_variable_ = 1));
-						test(() => typeof _an_undefined_variable_);
-						test(() => new Object({a: 1}));
-						// This ones causes a Proxy/inspect related error for some reason
-						test(() => (Object = 1));
-						test(() => typeof Object);
-						test(() => Array(Object({a: String(1)})));
-						test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
-						test(() => new Promise(resolve => setTimeout(resolve)));
+						module.await = (async () => {
+							await test(() => ({this: this, arguments: arguments}));
+							await test(() => _an_undefined_variable_);
+							await test(() => (_an_undefined_variable_ = 1));
+							await test(() => typeof _an_undefined_variable_);
+							await test(() => new Object({a: 1}));
+							// This ones causes a Proxy/inspect related error for some reason
+							await test(() => (Object = 1));
+							await test(() => typeof Object);
+							await test(() => Array(Object({a: String(1)})));
+							await test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
+							await test(() => new Promise(resolve => setTimeout(resolve)));
+						})();
 					},
 					ModuleScope,
 				);
