@@ -23,17 +23,24 @@
 						const {log, warn, group, groupEnd} = console;
 						const node = typeof process === 'object';
 						const format = (node && '%s') || '';
-						const test = ƒ =>
-							((ƒ.toString = () => `${Function.toString.call(ƒ)}`.replace(/[^]*?=>/, '').trim()), async () => await ƒ())()
+						const test = (ƒ, description) => (
+							(description = `${Function.toString.call(ƒ)}`
+								.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
+								.replace(/^\(([^]*)\)$/, '$1')),
+							(ƒ.toString = () => description),
+							(async () => await ƒ())()
 								.then(result => () => log(result))
 								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
-								.then(log => group(format, ƒ) || log() || groupEnd());
+								.then(log => group(format, ƒ) || log() || groupEnd())
+						);
 						test(() => ({this: this, arguments: arguments}));
 						test(() => _an_undefined_variable_);
 						test(() => (_an_undefined_variable_ = 1));
+						test(() => typeof _an_undefined_variable_);
 						test(() => new Object({a: 1}));
 						// This ones causes a Proxy/inspect related error for some reason
 						test(() => (Object = 1));
+						test(() => typeof Object);
 						test(() => Array(Object({a: String(1)})));
 						test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
 						test(() => new Promise(resolve => setTimeout(resolve)));
@@ -93,7 +100,7 @@
 	const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
 
 	const ids = Object.keys(Module.map);
-	const mark = `Done: ${ids.length} Modules`;
+	const mark = `${ids.length} Modules`;
 	const namespaces = new Set();
 
 	const {log, dir, error, group, groupEnd, time, timeEnd} = console;
@@ -102,12 +109,16 @@
 
 	delay && (await new Promise(resolve => setTimeout(resolve, delay)));
 
+	group(mark);
 	time(mark);
 	for (const id of ids) {
-		group(`Import "${id}"`);
+		const mark = `Import "${id}"`;
+		group(mark);
 		try {
 			const module = Module.map[id];
+			time(mark);
 			const namespace = await Module.import(id);
+			timeEnd(mark);
 			if (namespaces.has(namespace)) continue;
 			namespaces.add(namespace);
 			dir({Module: module, Namespace: namespace, Exports: {...namespace}});
@@ -118,6 +129,7 @@
 		}
 	}
 	timeEnd(mark);
+	groupEnd();
 })();
 
 function globals(properties) {

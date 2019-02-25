@@ -291,7 +291,9 @@
 						}
 
 						trace() {
-							const stack = new Error('').stack.replace(/^.*\n.*\n/, '\n');
+							const stack = new Error('').stack
+								.replace(/^.*\n.*\n/, '\n')
+								.replace(/^(?:    |\t)?/gm, '\u2003\u2003\u2003\u2003');
 							append(parent.appendChild(spans.trace.cloneNode(true)), 'Trace:', ...arguments, stack);
 							log(`Trace:`, ...arguments, stack);
 							// trace(...arguments);
