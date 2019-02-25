@@ -20,6 +20,7 @@
 			output.console pre {
 				padding: 0.5em 0.25em;
 				border: 1px solid transparent;
+				white-space: pre-line;
 			}
 
 			output.console pre:not(.group) {
@@ -28,6 +29,7 @@
 
 			output.console code {
 				padding: 0;
+				white-space: pre;
 			}
 
 			output.console * + *::before {
@@ -49,8 +51,8 @@
 				font-weight: bold;
 				display: list-item;
 				list-style-type: none;
-				padding-top: 0.5em;
-				padding-bottom: 0.5em;
+				padding: 0;
+				/* padding-bottom: 0.5em; */
 				margin-left: 0.75em;
 			}
 
@@ -72,11 +74,12 @@
 
 			output.console .warn {
 				background-color: #fef9e7;
-				/* background-image: linear-gradient(to left,#9999 0%, #9999 100%); */
 			}
+
 			output.console .info {
 				color: green;
 			}
+
 			output.console .error {
 				color: red;
 			}
@@ -158,8 +161,8 @@
 					return span;
 				};
 
-				const textify = (item, type, body) => {
-					let kind;
+				const textify = item => {
+					let type, body, kind;
 					const element =
 						((type = item === null ? null : typeof item) === 'object' &&
 							(('textContent' in item && item instanceof (kind = Node) && Span(item)) ||
@@ -170,16 +173,8 @@
 									(item.then(content => body.append(Span(new Text('<resolved> ')), textify(content))),
 									item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason))),
 									Span((body = Span())))) ||
-								(item instanceof (kind = Array) &&
-									Span(...[].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1))) ||
-								((kind = undefined),
-								Span(
-									new Text(
-										JSON.stringify(item, null, 1).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
-											(a.includes('\n') ? a.replace(/\s*\n(\s?)\s*/g, '$1') : a).replace(/"([^\s\d]\S*)": /g, '$1: '),
-										),
-									),
-								)))) ||
+								(item instanceof (kind = Array) && Span(...textify.array(item))) ||
+								((kind = undefined), Span(textify.object(item))))) ||
 						(type === 'function' && Span(new Text(`${item}`))) ||
 						Span(new Text(type !== 'symbol' ? `${item}` : ''));
 
@@ -212,6 +207,15 @@
 					return element;
 				};
 
+				textify.array = item => [].concat(...item.map((v, i) => [textify(v), new Text(', ')])).slice(0, -1);
+
+				textify.object = item => new Text(textify.json(item));
+
+				textify.json = item =>
+					JSON.stringify(item, null, 1).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
+						(a.includes('\n') ? a.replace(/\s*\n(\s?)\s*/g, '$1') : a).replace(/"([^\s\d]\S*)": /g, '$1: '),
+					);
+
 				const append = (parent, ...items) => {
 					const fragment = document.createDocumentFragment();
 					for (const item of items) fragment.appendChild(textify(item));
@@ -224,14 +228,14 @@
 					Object.assign(document.createElement(tag), {className, ...properties});
 
 				const spans = {
-					log: Parent({class: 'log'}),
-					warn: Parent({class: 'warn'}),
-					error: Parent({class: 'error'}),
-					info: Parent({class: 'info'}),
-					group: Parent({class: 'group log'}),
-					groupCollapsed: Parent({class: 'groupCollapsed group log'}),
-					groupEnd: Parent({class: 'groupEnd', hidden: true}),
-					trace: Parent({class: 'trace'}),
+					log: Parent({class: 'console.log log'}),
+					warn: Parent({class: 'console.warn warn'}),
+					error: Parent({class: 'console.error error'}),
+					info: Parent({class: 'console.info info'}),
+					group: Parent({class: 'console.group group log'}),
+					groupCollapsed: Parent({class: 'console.groupCollapsed groupCollapsed group log'}),
+					groupEnd: Parent({class: 'console.groupEnd groupEnd', hidden: true}),
+					trace: Parent({class: 'console.trace trace'}),
 				};
 
 				{
