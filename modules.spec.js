@@ -22,7 +22,6 @@
 					(module, exports) => {
 						const {log, warn, group, groupEnd} = console;
 						const node = typeof process === 'object';
-						const format = (node && '%s') || '';
 						const test = (ƒ, description) => (
 							(description = `${Function.toString.call(ƒ)}`
 								.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
@@ -31,7 +30,7 @@
 							(async () => await ƒ())()
 								.then(result => () => log(result))
 								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
-								.then(log => group(format, ƒ) || log() || groupEnd())
+								.then(log => (node ? group('%s', ƒ) : group(ƒ), log(), groupEnd()))
 						);
 						module.await = (async () => {
 							await test(() => ({this: this, arguments: arguments}));
@@ -44,7 +43,8 @@
 							await test(() => typeof Object);
 							await test(() => Array(Object({a: String(1)})));
 							await test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
-							await test(() => new Promise(resolve => setTimeout(resolve)));
+							await test(() => ['a', 2, Error('Not an Error!')]);
+							await test(() => new Promise(setTimeout));
 						})();
 					},
 					ModuleScope,
