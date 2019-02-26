@@ -42,7 +42,8 @@
 				white-space: pre;
 			}
 
-			output.console code > * + *::before {
+			output.console code > * + *::before,
+			output.console code > span > * + *::before {
 				display: inline-block;
 				content: '';
 				width: 0.5em;
