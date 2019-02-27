@@ -71,7 +71,7 @@
 				setProperty(
 					this,
 					url,
-					Module.import(url).then(namespace => (bindProperty(this, url, () => namespace, true, false), namespace)),
+					DynamicModule.import(url).then(namespace => (bindProperty(this, url, () => namespace, true, false), namespace)),
 					true,
 					true,
 				)
@@ -315,7 +315,7 @@ ${code}
 		};
 	})();
 
-	class Module {
+	class DynamicModule {
 		constructor(url, evaluator, scope) {
 			const enumerable = false;
 			setProperty(this, 'url', url, enumerable);
@@ -351,7 +351,7 @@ ${code}
 	/** Properties injected into every module context */
 	const contextuals = {};
 
-	Module.debugging = (() => {
+	DynamicModule.debugging = (() => {
 		const debug = (type, ...args) => {
 			console.log(type, ...args);
 			// type in debugging && debugging[type] null, args);
@@ -361,11 +361,11 @@ ${code}
 		return debugging;
 	})();
 
-	setPrototypeOf(Module, new ModuleStrapper());
+	setPrototypeOf(DynamicModule, new ModuleStrapper());
 
 	GlobalScope.DynamicModules = {
 		ModuleScope,
-		Module,
+		Module: DynamicModule,
 	};
 
 }());
