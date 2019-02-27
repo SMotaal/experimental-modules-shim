@@ -32,6 +32,7 @@
 								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
 								.then(log => (node ? group('%s', ƒ) : group(ƒ), log(), groupEnd()))
 						);
+						let temp;
 						module.await = (async () => {
 							await test(() => ({this: this, arguments: arguments}));
 							await test(() => _an_undefined_variable_);
@@ -39,7 +40,7 @@
 							await test(() => typeof _an_undefined_variable_);
 							await test(() => new Object({a: 1}));
 							// This ones causes a Proxy/inspect related error for some reason
-							await test(() => (Object = 1));
+							await test(() => (([Object, temp = Object, Object] = [undefined, undefined, Object]), temp));
 							await test(() => typeof Object);
 							await test(() => Array(Object({a: String(1)})));
 							await test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
