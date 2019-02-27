@@ -31,26 +31,35 @@
 	const locals = {};
 
 	const ModuleScope = new Proxy(scope, {
-		get: (target, property, receiver) => {
+		get(target, property, receiver) {
 			if (property in globals) return globals[property];
 			const value = property in GlobalScope && typeof property === 'string' ? GlobalScope[property] : undefined;
 			if (value && typeof value === 'function') {
 				const local = locals[property];
-				const {proxy} =
+				return (
 					(local && local.value === value && local) ||
 					(locals[property] = {
 						value,
 						proxy: new Proxy(value, {
-							construct: (constructor, argArray, newTarget) => Reflect.construct(value, argArray, newTarget),
-							apply: (method, thisArg, argArray) =>
-								thisArg == null || thisArg === receiver ? value(...argArray) : Reflect.apply(value, thisArg, argArray),
+							construct(constructor, argArray, newTarget) {
+								return Reflect.construct(value, argArray, newTarget);
+							},
+							apply(method, thisArg, argArray) {
+								return thisArg == null || thisArg === receiver
+									? value(...argArray)
+									: Reflect.apply(value, thisArg, argArray);
+							},
 						}),
-					});
-				return proxy;
+					})
+				).proxy;
 			}
 			return value;
 		},
-		set: (globals, property) => {
+		set(target, property, value) {
+			if (property in GlobalScope) {
+				Reflect.set(GlobalScope, property, value);
+				return true;
+			}
 			throw ReferenceError(`${property} is not defined`);
 		},
 	});
@@ -96,7 +105,7 @@
 	const evaluate = code => (0, eval)(code);
 
 	const wrap = (code, source) => `
-((module, exports) => {
+(function* (module, exports) {
   module.debug('module-url', module.meta.url);
   module.debug('compiled-text', ${JSON.stringify((code = reindent(code, '    ')))});
   module.debug('source-text', ${JSON.stringify(reindent(source, '    '))});
@@ -106,6 +115,29 @@ ${code}
   })();
 })
 `;
+
+	// const wrap = (code, source) => `
+	// ((module, exports) => {
+	//   module.debug('module-url', module.meta.url);
+	//   module.debug('compiled-text', ${JSON.stringify((code = reindent(code, '    ')))});
+	//   module.debug('source-text', ${JSON.stringify(reindent(source, '    '))});
+	//   with(module.scope) (function () {
+	//     "use strict";
+	// ${code}
+	//   })();
+	// })
+	// `;
+
+	// const wrap = (code, source, indent = '    ') => `
+	// ((module, exports) => {
+	//   module.debug('module-url', module.meta.url);
+	//   module.debug('compiled-text', ${JSON.stringify((code = reindent(code, indent)))});
+	//   module.debug('source-text', ${JSON.stringify(reindent(source, indent))});
+	//   with(module.scope) (function () { "use strict"; return (function* () {
+	// ${code}
+	//   })() })();
+	// })
+	// `;
 
 	const reindent = (source, newIndent = '') => {
 		source = source.replace(/^\t/gm, '  ');
@@ -218,7 +250,7 @@ ${code}
 				const {bindings, namespace, context} = await module.instantiate();
 				try {
 					// TODO: Ensure single execution
-					await module.evaluator(context, context.export);
+					module.evaluator(context, context.export).next();
 					!context.await || (await context.await);
 					return setProperty(module, 'namespace', namespace);
 				} catch (exception) {
