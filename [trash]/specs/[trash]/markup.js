@@ -1,4 +1,0 @@
-{
-  const Module = ModuleScope.Module;
-
-}
