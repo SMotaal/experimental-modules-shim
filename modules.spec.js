@@ -14,24 +14,27 @@
 	} = globals();
 
 	{
+		const {log, warn, group, groupEnd} = console;
+		const node = typeof process === 'object';
+		ModuleScope.test = (ƒ, description) => (
+			(description = `${Function.toString.call(ƒ)}`
+				.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
+				.replace(/^\(([^]*)\)$/, '$1')),
+			(ƒ.toString = () => description),
+			(async () => await ƒ())()
+				.then(result => () => log(result))
+				.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
+				.then(log => (node ? group('%s', ƒ) : group(ƒ), log(), groupEnd()))
+		);
+	}
+
+	{
 		/// ESX Modules Experiment
 		Modules: {
 			LEVEL >= 0 &&
 				new Module(
 					'level-0/module-scope',
 					(module, exports) => {
-						const {log, warn, group, groupEnd} = console;
-						const node = typeof process === 'object';
-						const test = (ƒ, description) => (
-							(description = `${Function.toString.call(ƒ)}`
-								.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
-								.replace(/^\(([^]*)\)$/, '$1')),
-							(ƒ.toString = () => description),
-							(async () => await ƒ())()
-								.then(result => () => log(result))
-								.catch(reason => () => warn(`${reason}`.split('\n', 1)[0]))
-								.then(log => (node ? group('%s', ƒ) : group(ƒ), log(), groupEnd()))
-						);
 						let temp;
 						module.await = (async () => {
 							await test(() => ({this: this, arguments: arguments}));
@@ -53,6 +56,22 @@
 
 			LEVEL >= 1 &&
 				new Module(
+					'level-1/global',
+					(module, exports) => {
+						`export { Object, Array }`;
+						let Object, Array;
+						exports.default = {Object, Array} =
+							('object' === typeof globalThis && globalThis && globalThis.globalThis === globalThis && globalThis) ||
+							('object' === typeof self && self && self.self === self && self) ||
+							('object' === typeof global && global && global.global === global && global) ||
+							('function' === typeof eval && (1, eval)('this')) ||
+							{};
+					},
+					ModuleScope,
+				);
+
+			LEVEL >= 1 &&
+				new Module(
 					'level-1/direct-exports',
 					(module, exports) => {
 						`export { q, TWO, y, g1, g2, g3, G1 }`;
@@ -65,6 +84,21 @@
 						function* g3() {}
 						class G1 {}
 						exports.default = defaults;
+					},
+					ModuleScope,
+				);
+
+			LEVEL >= 2 &&
+				new Module(
+					'level-2/global',
+					(module, exports) => {
+						`import global from '../level-1/global'`;
+						`import {Object, Array} from '../level-1/global'`;
+						`import * as global_namespace from '../level-1/global'`;
+						module.await = (async () => {
+							await test(() => [Object, global.Object]);
+							await test(() => `${global_namespace.default}`);
+						})();
 					},
 					ModuleScope,
 				);

@@ -158,7 +158,6 @@
 					});
 				};
 
-				// const Break = () => document.createElement('br');
 				const Break = () => Mark('\n', {class: 'break'});
 				const Indent = () => Mark('\t', {class: 'indent'});
 				const Comma = () => Mark(', ', {class: 'comma'});
@@ -231,11 +230,6 @@
 							(('textContent' in item && item instanceof (kind = Element) && Span(item)) ||
 								(item instanceof (kind = Error) &&
 									Object.assign(Span(new Text(`${item}`)), {className: 'error', title: `${item.stack}`})) ||
-								// (item instanceof (kind = String) && Span(new Text(item))) ||
-								// (item instanceof (kind = Promise) &&
-								// 	(item.then(content => body.append(Span(new Text('<resolved> ')), textify(content))),
-								// 	item.catch(reason => body.append(Span(new Text('<rejected> ')), textify(reason))),
-								// 	Span((body = Span())))) ||
 								(item instanceof (kind = Array) && textify.array(item)) ||
 								((kind = undefined), Span(textify.object(item))))) ||
 						(type === 'function' && Span(new Text(`${item}`))) ||
@@ -318,16 +312,22 @@
 					return span;
 				};
 
-				// textify.object = item => {
-				// 	const body = document.createElement('span');
-				// 	idle(() => body.append(new Text(textify.json(item))));
-				// 	return body;
-				// };
-
-				textify.json = item =>
-					JSON.stringify(item, null, 1).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
+				textify.json = (item, seen) => (
+					(seen = new WeakSet([document.defaultView])),
+					JSON.stringify(
+						item,
+						function(key, value) {
+							if (value && 'object|function'.includes(typeof value)) {
+								if (seen.has(value)) return;
+								seen.add(value);
+							}
+							return value;
+						},
+						1,
+					).replace(/^\{\s*([^]*)\s*\}$/, (m, a) =>
 						(a.includes('\n') ? a.replace(/\s*\n(\s?)\s*/g, '$1') : a).replace(/"([^\s\d]\S*)": /g, '$1: '),
-					);
+					)
+				);
 
 				textify.format = args => {
 					const body = document.createElement('span');
@@ -337,13 +337,13 @@
 						typeof args[0] === 'string' &&
 						textify.format.matcher.test(args[0]) &&
 						([f, args] = args);
-					idle(() => body.append(textify.each(...args)));
+					idle(() => body.append(textify.concat(...args)));
 					return body;
 				};
 
-				textify.each = (...items) => Fragment.each(textify, ...items);
-
 				textify.format.matcher = /(?:[^\\%]|^)%(?:c|d|f|o|O|s|\d+f|\d*\.\d+f)/g;
+
+				textify.concat = (...items) => Fragment.each(textify, ...items);
 
 				{
 					const {dir, log, warn, error, info, group, groupCollapsed, groupEnd, trace} = console;
@@ -356,6 +356,58 @@
 						return root.appendChild(block);
 					};
 
+					class DOMConsole {
+						log(...args) {
+							append(Block['console.log'](), textify.format(args));
+							return log(...args);
+						}
+
+						dir(...args) {
+							append(Block['console.dir'](), textify.object(args[0]));
+							return dir(...args);
+						}
+
+						warn(...args) {
+							append(Block['console.warn'](), textify.format(args));
+							return warn(...args);
+						}
+
+						error(...args) {
+							append(Block['console.error'](), textify.format(args));
+							return error(...args);
+						}
+
+						info(...args) {
+							append(Block['console.info'](), textify.format(args));
+							return info(...args);
+						}
+
+						trace(...args) {
+							const stack = new Error('').stack
+								.replace(/^.*\n.*?\n+/, '\n')
+								.replace(/^(?:    |\t)?/gm, '\u2003\u2003\u2003\u2003');
+							append(Block['console.trace'](), textify.concat('Trace:', ...args, stack));
+							// log(`Trace:`, ...args, stack);
+							return trace(...args);
+						}
+
+						group(...args) {
+							root = append(Block['console.group'](), textify.format(args));
+							return group(...args);
+						}
+
+						groupCollapsed(...args) {
+							root = append(Block['console.groupCollapsed'](), textify.format(args));
+							return groupCollapsed(...args);
+						}
+
+						groupEnd(...args) {
+							append(Block['console.groupEnd']());
+							root = root.parentElement;
+							return groupEnd();
+						}
+					}
+
 					({
 						dir: console.dir = dir,
 						log: console.log = log,
@@ -366,57 +418,7 @@
 						groupEnd: console.groupEnd = groupEnd,
 						groupCollapsed: console.groupCollapsed = groupCollapsed,
 						trace: console.trace = trace,
-					} = new class {
-						log(...args) {
-							append(Block['console.log'](), textify.format(args));
-							log(...args);
-						}
-
-						dir(...args) {
-							append(Block['console.dir'](), textify.object(args[0]));
-							dir(args[0]);
-						}
-
-						warn(...args) {
-							append(Block['console.warn'](), textify.format(args));
-							warn(...args);
-						}
-
-						error(...args) {
-							append(Block['console.error'](), textify.format(args));
-							error(...args);
-						}
-
-						info(...args) {
-							append(Block['console.info'](), textify.format(args));
-							info(...args);
-						}
-
-						trace(...args) {
-							const stack = new Error('').stack
-								.replace(/^.*\n.*?\n+/, '\n')
-								.replace(/^(?:    |\t)?/gm, '\u2003\u2003\u2003\u2003');
-							append(Block['console.trace'](), textify.each('Trace:', ...args, stack));
-							log(`Trace:`, ...args, stack);
-							// trace(...arguments);
-						}
-
-						group(...args) {
-							root = append(Block['console.group'](), textify.format(args));
-							group(...args);
-						}
-
-						groupCollapsed(...args) {
-							root = append(Block['console.groupCollapsed'](), textify.format(args));
-							groupCollapsed(...args);
-						}
-
-						groupEnd(...args) {
-							append(Block['console.groupEnd']());
-							root = root.parentElement;
-							groupEnd();
-						}
-					}());
+					} = new DOMConsole());
 				}
 			}
 		</script>
