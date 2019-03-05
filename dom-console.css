@@ -1,0 +1,127 @@
+﻿output.console,
+output.console pre,
+output.console code {
+  font-family: 'Iosevka', 'Fira Code', monospace;
+  background-clip: padding-box;
+  margin: 0;
+  /* border-collapse: collapse; */
+}
+
+output.console .stdout {
+  color: black;
+}
+
+output.console .stderr,
+output.console .error {
+  color: red;
+}
+
+output.console pre {
+  padding: 0.5em 0.25em;
+  border: 1px solid transparent;
+  white-space: pre-line;
+}
+
+output.console pre:not(.group) {
+  border-bottom-color: #9994;
+}
+
+output.console code,
+output.console .mark {
+  padding: 0;
+  white-space: pre;
+}
+
+output.console code > * + *::before,
+output.console code > span > * + *::before {
+  display: inline-block;
+  content: '';
+  width: 0.5em;
+}
+
+output.console hr {
+  border-style: solid;
+  border-color: #9994;
+}
+
+output.console .console-log {
+}
+
+output.console .console-group > :first-child {
+  font-weight: bold;
+  display: list-item;
+  list-style-type: none;
+  padding: 0;
+  /* padding-bottom: 0.5em; */
+  margin-left: 0.75em;
+}
+
+output.console .console-group > :first-child::before {
+  color: #9999;
+  display: inline-block;
+  width: 0;
+  position: relative;
+  left: -0.875em;
+  /* text-align: center; */
+  content: '▾';
+}
+
+output.console .console-group > :not(:first-child) {
+  padding-left: 1em;
+  border-left-color: #9994;
+  border-bottom-color: #9994;
+}
+
+output.console .console-warn {
+  background-color: #fef9e7;
+}
+
+output.console .console-info {
+  color: green;
+}
+
+output.console .console-error {
+}
+
+output.console .number-value,
+output.console .Number-object {
+  color: cornflowerblue;
+}
+output.console .boolean-value,
+output.console .Boolean-object {
+  color: steelblue;
+}
+output.console .undefined-value,
+output.console .null-value {
+  color: #999;
+}
+
+output.console .string-value {
+  color: #666;
+}
+
+output.console .object-body {
+  display: grid;
+  grid-template: 'outer inner' / min-content minmax(max-content, auto);
+  grid-column-gap: 0.5em;
+  white-space: normal;
+}
+
+output.console .object-body > slot {
+  white-space: normal;
+}
+
+output.console .object-body > slot > * {
+  grid-column: inner;
+  justify-self: start;
+}
+
+output.console .object-body > .mark,
+output.console .object-body > slot > .indent {
+  grid-column: outer;
+  justify-self: end;
+}
+
+output.console .object-body > slot > .comma {
+  display: none;
+}
