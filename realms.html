@@ -1,0 +1,29 @@
+﻿<!DOCTYPE html>
+<html>
+	<head>
+		<title>SMotaal's Realms</title>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover"
+		/>
+		<link rel="stylesheet" href="./dom-console.css" />
+	</head>
+	<body>
+		<script src="./dom-console.js"></script>
+    <script type="module">
+				const { log } = console;
+				(async global => {
+					await(await import('./bootstrap.mjs')).default;
+					// await global['dynamic-modules'];
+					import('./modules.spec.js');
+				})((1, eval)(`(global => ((global.DynamicModules || (global.DynamicModules = {})).mode = "ESM", global))(this)`));
+      (async () => {
+				await(await import('./bootstrap.mjs')).default;
+        // await import('./bootstrap.js');
+        // await DynamicModules;
+        import('./modules.spec.js');
+      })();
+    </script>
+	</body>
+</html>
