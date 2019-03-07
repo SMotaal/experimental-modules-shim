@@ -441,5 +441,8 @@ DynamicModule.debugging = (() => {
 
 setPrototypeOf(DynamicModule, new ModuleStrapper());
 
-GlobalScope.DynamicModules = {ModuleScope, Module: DynamicModule};
+GlobalScope.DynamicModules
+	? 'DynamicModule' in GlobalScope.DynamicModules ||
+	  ((GlobalScope.DynamicModules.ModuleScope = ModuleScope), (GlobalScope.DynamicModules.DynamicModule = DynamicModule))
+	: (GlobalScope.DynamicModules = {ModuleScope, GlobalScope});
 //# sourceMappingURL=modules.mjs.map

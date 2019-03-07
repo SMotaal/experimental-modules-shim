@@ -11,7 +11,7 @@
 		CYCLES = 0,
 		DELAY = 1000,
 		DynamicModules,
-		DynamicModules: {ModuleScope, Module},
+		DynamicModules: {ModuleScope, DynamicModule: Module},
 	} = globals();
 
 	{
@@ -148,7 +148,8 @@
 	delay && (await new Promise(resolve => setTimeout(resolve, delay)));
 
 	group(mark);
-	(({ lib, mode, source} = {}) => log(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(DynamicModules.meta);
+	(({lib, mode, source} = {}) =>
+		log(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(DynamicModules.meta);
 	time(mark);
 	for (const id of ids) {
 		const mark = `Import "${id}"`;

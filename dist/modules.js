@@ -444,7 +444,10 @@ ${code}${url ? `\n\n${indent}//# sourceURL=${`${new URL(url, 'file:///')}`.repla
 
 	setPrototypeOf(DynamicModule, new ModuleStrapper());
 
-	GlobalScope.DynamicModules = {ModuleScope, Module: DynamicModule};
+	GlobalScope.DynamicModules
+		? 'DynamicModule' in GlobalScope.DynamicModules ||
+		  ((GlobalScope.DynamicModules.ModuleScope = ModuleScope), (GlobalScope.DynamicModules.DynamicModule = DynamicModule))
+		: (GlobalScope.DynamicModules = {ModuleScope, GlobalScope});
 
 }());
 //# sourceMappingURL=modules.js.map
