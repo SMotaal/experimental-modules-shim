@@ -5,7 +5,8 @@
 	await import('./bootstrap.js');
 	return await DynamicModules.ready;
 })(
-	(typeof self === 'object' && self && self.self === self && self) ||
-		(typeof global === 'object' && global && global.global === global && global) ||
-		undefined,
+	(1, eval)('this')
+	// (typeof self === 'object' && self && self.self === self && self) ||
+	// 	(typeof global === 'object' && global && global.global === global && global) ||
+	// 	undefined,
 );

@@ -11,11 +11,13 @@
 			throw exception;
 		}
 	} else {
+		console.warn(`Skipped reinitializing dynamic modules (initialized mode = ${DynamicModules.mode || 'unknown'})`);
 		await DynamicModules.ready;
 	}
 	import('./modules.spec.js');
 })(
-	(typeof self === 'object' && self && self.self === self && self) ||
-		(typeof global === 'object' && global && global.global === global && global) ||
-		undefined,
+	(1, eval)('this'),
+	// (typeof self === 'object' && self && self.self === self && self) ||
+	// 	(typeof global === 'object' && global && global.global === global && global) ||
+	// 	undefined,
 );
