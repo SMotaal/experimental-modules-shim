@@ -1,7 +1,7 @@
 ﻿<!DOCTYPE html>
 <html>
 	<head>
-		<title>SMotaal's Realms</title>
+		SMotaal's Realms Experiment
 		<meta charset="utf-8" />
 		<meta
 			name="viewport"
@@ -11,12 +11,15 @@
 	</head>
 	<body>
 		<script src="/console/experiments/dom-console/dom-console.js"></script>
-    <script type="module">
-			const { log } = console;
-      (async () => {
-				await(await import('./bootstrap.mjs')).default;
-        import('./modules.spec.js');
-      })();
-    </script>
+		<script type="module">
+			const {log} = console;
+			(async () => {
+				await import('./dynamicImport.js');
+				// log(dynamicImport);
+				log(await dynamicImport('./bootstrap.mjs'));
+				// 	await(await import('./bootstrap.mjs')).default;
+				//   import('./modules.spec.js');
+			})();
+		</script>
 	</body>
 </html>
