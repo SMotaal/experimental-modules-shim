@@ -2,13 +2,15 @@
 	const {process, DynamicModules = (global.DynamicModules = (module && module.exports) || {})} = global;
 
 	const mode =
-    DynamicModules.mode || (process && module && require && typeof module.exports === 'object' ? 'CJS' : 'ESM');
+		DynamicModules.mode || (process && module && require && typeof module.exports === 'object' ? 'CJS' : 'ESM');
 
-  if (DynamicModules.ready) {
-    throw Error(`Cannot reinitialize dynamic modules`);
-  }
+	if (DynamicModules.ready) {
+		throw Error(`Cannot reinitialize dynamic modules`);
+	}
 
-	const importModule = mode === 'CJS' ? require : async specifier => import(specifier);
+	// const importModule = mode === 'CJS' ? require : async specifier => import(specifier);
+	// const importModule = mode === 'CJS' ? require : global.dynamicImport;
+	//  || (1, eval)(`specifier => import(specifier)`);
 
 	module && module.exports && (module.exports = DynamicModules);
 
@@ -34,8 +36,12 @@
 		}
 
 		DynamicModules.ready = (async () => {
-			await importModule(lib);
-			// mode === 'CJS' && (await new Promise(resolve => setTimeout(resolve, 100)));
+			// console.log(await importModule(lib));
+			mode === 'CJS'
+				? require(lib)
+				: global.dynamicImport
+				? await global.dynamicImport(lib)
+				: await (1, eval)(`specifier => import(specifier)`)(lib);
 			const {meta = (DynamicModules.meta = {})} = DynamicModules;
 			Object.assign(meta, {lib, source, mode});
 			return DynamicModules;
@@ -43,9 +49,6 @@
 	}
 })(
 	(1, eval)('this'),
-	// (typeof self === 'object' && self && self.self === self && self) ||
-	// 	(typeof global === 'object' && global && global.global === global && global) ||
-	// 	undefined,
 	(typeof module === 'object' && module) || undefined,
 	(typeof require === 'function' && require) || undefined,
 );
