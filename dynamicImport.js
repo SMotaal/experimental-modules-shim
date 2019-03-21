@@ -84,57 +84,7 @@
 				module.exports = dynamicImport;
 			}
 
-			// 'dynamicImport' in global || global.dynamicImport = dynamicImport;
-
 			return dynamicImport;
-
-			// function pathToFileURL(path) {
-			// 	const WindowsPath = /^[a-z]:\\|^[^/]*\\(?![ \\])/;
-			// 	const WindowsSeparators = /\\/g;
-			// 	pathToFileURL = path =>
-			// 		WindowsPath.test(path)
-			// 			? new URL(`file://${path.replace(WindowsSeparators, '/')}`)
-			// 			: new URL(path, 'file:///');
-			// 	return pathToFileURL(...arguments);
-			// 	// const WindowsAbsolutePath = /^[a-z]:\\/;
-			// 	// const WindowsRelativePath = /[.]{1,2}\\/;
-			// }
-
-			// function fileURLToPath(url) {
-			// 	const WindowsPathname = /^\/[a-z]:\//;
-			// 	const URLSeparators = /\//g;
-			// 	fileURLToPath = url => {
-			// 		const {protocol, pathname} = new URL(url);
-			// 		const path = decodeURIComponent(pathname);
-			// 		return WindowsPathname.test(path) ? path.slice(1).replace(URLSeparators, '\\') : path;
-			// 	};
-			// 	return fileURLToPath(...arguments);
-			// }
-
-			// function currentFileURL() {
-			// 	/* TEST:
-			// (async () => (await (1, eval)('{ (specifier) => import(specifier) }')(`data:text/javascript,export default Error('').stack`)).default)().catch(exception => Error('').stack).then(stack => `${stack}`.replace(/^[^]+?\n\s+(?:@|at .* [(](?=\S[^\n]+:\d+[)])|at (?=[^\n]+[^)](?:\n|$)))(\S[^\n]*?)(?:[:]\d+){2}[^]*$/, '$1')).then(console.log)
-			// */
-			// 	const stack = `${Error('').stack}`;
-			// 	const filename =
-			// 		stack
-			// 			.replace(
-			// 				/^[^]+?\n\s+(?:@|at .* [(](?=\S[^\n]+:\d+[)])|at (?=[^\n]+[^)](?:\n|$)))(\S[^\n]*?)(?:[:]\d+){2}[^]*$/,
-			// 				'$1',
-			// 			)
-			// 			.trim()
-			// 			.replace(/^[^]*\n[^]*$/, '') || undefined;
-			// 	const url =
-			// 		(filename &&
-			// 			((/^(https?|file|data):/.test(filename) && new URL(filename)) ||
-			// 				(/[/\\]/.test(filename) && pathToFileURL(filename)))) ||
-			// 		undefined;
-			// 	return Object.assign((currentFileURL = url ? () => {} : () => url), {
-			// 		stack,
-			// 		filename,
-			// 		url: url && new URL(url),
-			// 	})();
-			// }
 		}
 	};
 
@@ -146,19 +96,6 @@
 		};
 
 		scope.global.dynamicImport = bootstrap(scope);
-
-		// if (typeof self !== 'object' && !(scope.require && scope.module)) {
-		// 	global.dynamicImport = (async () => {
-		// 		scope.url = `${currentFileURL()}`;
-		// 		scope.require = (await (1, eval)(
-		// 			`import('${`${scope.url}`.replace('dynamicImport.js', 'require.mjs')}')`,
-		// 		)).default;
-		// 		console.log(scope);
-		// 		return bootstrap(scope);
-		// 	})();
-		// } if (typeof self === 'object') {
-		// 	global.dynamicImport = bootstrap(scope);
-		// }
 	}
 
 	function pathToFileURL(path) {
@@ -202,26 +139,6 @@
 						(/[/\\]/.test(filename) && pathToFileURL(filename)))) ||
 				undefined),
 		} = currentFileURL;
-		// console.log({...currentFileURL});
 		return url;
-		// const stack = `${Error('').stack}`;
-		// const filename =
-		// 	stack
-		// 		.replace(
-		// 			/^[^]+?\n\s+(?:@|at .* [(](?=\S[^\n]+:\d+[)])|at (?=[^\n]+[^)](?:\n|$)))(\S[^\n]*?)(?:[:]\d+){2}[^]*$/,
-		// 			'$1',
-		// 		)
-		// 		.trim()
-		// 		.replace(/^[^]*\n[^]*$/, '') || undefined;
-		// const url =
-		// 	(filename &&
-		// 		((/^(https?|file|data):/.test(filename) && new URL(filename)) ||
-		// 			(/[/\\]/.test(filename) && pathToFileURL(filename)))) ||
-		// 	undefined;
-		// return Object.assign((currentFileURL = url ? () => {} : () => url), {
-		// 	stack,
-		// 	filename,
-		// 	url: url && new URL(url),
-		// })();
 	}
 }
