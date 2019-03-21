@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html checkerboard>
 	<head>
 		<title>SMotaal's Modules Experiment</title>
 		<meta charset="utf-8" />
@@ -7,22 +7,65 @@
 			name="viewport"
 			content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover"
 		/>
-		<!-- <link rel="stylesheet" href="/console/experiments/dom-console/dom-console.css" /> -->
+		<link rel="stylesheet" href="/pholio/styles/fonts/iosevka/iosevka.css" />
+		<link rel="stylesheet" href="/pholio/styles/styles.css" />
+		<style>
+			html {
+				--shade: #eeee;
+			}
+
+			body > main {
+				display: grid;
+				padding: 0;
+				margin: 0;
+				min-width: calc(100vw - 2rem);
+				min-height: inherit;
+				grid-auto-rows: max-content;
+			}
+
+			body > main > * {
+				opacity: 1;
+				background-color: #ffffff;
+				padding: 1rem;
+				min-width: 45em;
+				overflow-x: scroll;
+			}
+
+			body > main > pre.preview:first-child {
+				height: 45vh;
+				overflow: scroll;
+				/* overscroll-behavior: contain; */
+			}
+
+			body > main > output.console:empty::before {
+				color: #999;
+				text-align: center;
+				content: 'No console output to show yet!';
+				display: grid;
+			}
+
+			body > main > script,
+			body > main > style {
+				display: none;
+			}
+		</style>
+		<script type="module" src="/console/experiments/dom-console/dom-console.mjs"></script>
 	</head>
 	<body>
-		<script type="module" src="/console/experiments/dom-console/dom-console.mjs"></script>
-		<script type="module" src="./esm.mjs"></script>
-		<!-- <script type="module">
-			// import '/console/experiments/dom-console/dom-console.mjs';
-			// import './esm.mjs';
-
-			import dynamicImport from './dynamicImport.mjs';
-
+		<main>
+			<output class="console"></output>
+		</main>
+		<script type="module">
 			(async () => {
-				await dynamicImport('/console/experiments/dom-console/dom-console.mjs');
-
-				await dynamicImport('./esm.mjs');
+				const source = await (await fetch('./modules.spec.js')).text();
+				const preview = document.createElement('pre');
+				preview.textContent = source.replace(/\t/g, '  ');
+				preview.className = 'preview';
+				document.querySelector('main').prepend(preview);
+				await new Promise(requestAnimationFrame);
+				// (1, eval)(source);
 			})();
-		</script> -->
+		</script>
+		<!-- <script type="module" src="./esm.mjs"></script> -->
 	</body>
 </html>
