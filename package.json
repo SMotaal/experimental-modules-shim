@@ -12,6 +12,7 @@
 		"start:cjs:dev": "node . --dev"
 	},
 	"type": "module",
+	"main": "esm.mjs",
 	"exports": {},
 	"devDependencies": {
 		"http-server": "*",

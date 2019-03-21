@@ -1,6 +1,10 @@
 ﻿import dynamicImport from './dynamicImport.mjs';
+// import './dynamicImport.mjs';
 (async global => {
+	// 'dynamicImport' in global || (await Promise.resolve(resolve => setTimeout(resolve, 100)));
+	// const dynamicImport = await global.dynamicImport;
 	const {DynamicModules = (global.DynamicModules = {})} = global;
+
 	if (!DynamicModules.ready) {
 		const {mode} = DynamicModules;
 		try {
