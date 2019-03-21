@@ -49,12 +49,12 @@
 				display: none;
 			}
 		</style>
-		<script type="module" src="/console/experiments/dom-console/dom-console.mjs"></script>
 	</head>
 	<body>
 		<main>
 			<output class="console"></output>
 		</main>
+		<script type="module" src="/console/experiments/dom-console/dom-console.mjs"></script>
 		<script type="module">
 			(async () => {
 				const source = await (await fetch('./modules.spec.js')).text();
@@ -66,6 +66,6 @@
 				// (1, eval)(source);
 			})();
 		</script>
-		<!-- <script type="module" src="./esm.mjs"></script> -->
+		<script type="module" src="./esm.mjs"></script>
 	</body>
 </html>
