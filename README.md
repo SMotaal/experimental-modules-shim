@@ -1,7 +1,6 @@
-# Modules (_alpha_)
+# Modules › Shim `alpha` <span float-right><small>[<kbd>GitHub</kbd>](https://github.com/SMotaal/experimental/blob/master/modules/alpha/)</small></span>
 
 Runtime-strapped Module subsystem.
-
 
 ## Browser (ecmascript-modules only)
 
