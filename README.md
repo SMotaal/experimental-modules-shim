@@ -1,4 +1,4 @@
-# Modules › Shim `alpha` <span float-right><small>[<kbd>GitHub</kbd>](https://github.com/SMotaal/experimental/blob/master/modules/alpha/)</small></span>
+# Modules › Shim `alpha` <span float-right><small>[<kbd>GitHub</kbd>](https://github.com/SMotaal/experimental-modules-shim)</small></span>
 
 Runtime-strapped Module subsystem.
 
@@ -17,7 +17,7 @@ Runtime-strapped Module subsystem.
 ### CJS/DIST — rollup files in /dist folder
 
 ```
-node ./index.js
+node ./cjs
 ```
 
 ## Node.js (ecmascript-modules only)
@@ -25,11 +25,11 @@ node ./index.js
 ### ESM/DIST — rollup files in /dist folder
 
 ```
-node --experimental-modules ./index.mjs
+node --experimental-modules ./esm.mjs
 ```
 
 ### ESM/DEV — source files in /lib folder
 
 ```
-node --experimental-modules ./index.mjs --dev
+node --experimental-modules ./esm.mjs --dev
 ```
