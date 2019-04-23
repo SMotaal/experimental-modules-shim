@@ -37,14 +37,17 @@
 					'level-0/module-scope',
 					(module, exports) => {
 						let temp;
+						const LOCAL_CONSTANT = 1;
 						module.await = (async () => {
 							await test(() => ({this: this, arguments: arguments}));
 							await test(() => _an_undefined_variable_);
+							await test(() => document);
 							await test(() => (_an_undefined_variable_ = 1));
 							await test(() => typeof _an_undefined_variable_);
 							await test(() => new Object({a: 1}));
 							// This ones causes a Proxy/inspect related error for some reason
 							await test(() => (([Object, temp = Object, Object] = [undefined, undefined, Object]), temp));
+							await test(() => LOCAL_CONSTANT === eval('LOCAL_CONSTANT'));
 							await test(() => typeof Object);
 							await test(() => Array(Object({a: String(1)})));
 							await test(() => new Array(new String('a'), new Number(2), Promise.resolve(Error('Not an Error!'))));
