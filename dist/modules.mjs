@@ -15,6 +15,7 @@ const copyProperty = (target, source, identifier, alias = identifier) =>
 const ResolvedPromise = Promise.resolve();
 
 const GlobalScope =
+	globalThis ||
 	(typeof self === 'object' && self && self.self) ||
 	(typeof global === 'object' && global && global.global) ||
 	(() => (0, eval)('this'))();
@@ -54,7 +55,7 @@ const ModuleScope = new Proxy(scope, {
 	},
 	set(target, property, value, receiver) {
 		if (receiver !== ModuleScope) {
-			throw ReferenceError(`${property} is not defined`);
+			throw ReferenceError(`${property} is not defined [proxy says]`);
 		}
 		return Reflect.set(GlobalScope, property, value);
 	},
@@ -152,96 +153,13 @@ const ModuleEvaluator = ({
 		CompiledModuleEvaluator,
 	);
 
-/// <reference path='../global.d.ts' />
-//@ts-check
-
-/// Internal
-
-/** @type {ObjectConstructor} */
-//@ts-ignore
-const Object$1 = {}.constructor;
-
-const bindings = Object$1.create(null);
-
-/** @typedef {import('../types').Globals} Globals */
-/** @type {{[K in keyof Globals]: Globals[K]}} */
-const globals$1 = Object$1.create(bindings, {
-  Request: {get: () => Request, set: value => (Request = value)},
-});
-
-/**
- * @template {keyof Globals} T
- * @param {T} name
- * @param {*} value
- * @returns {Globals[T]}
- */
-const scoped = (name, value) => (
-  name in bindings
-    ? (bindings[name] = value)
-    : Object$1.defineProperty(globals$1, name, {value, enumerable: true, configurable: true}),
-  value
-);
-
-const rebind = (b, a) =>
-  function() {
-    return arguments.length ? b(a(arguments[0])) : b();
-  };
-
-/**
- * @template {keyof Globals} T
- * @template {(value?: Globals[T]) => Globals[T] | void} U
- * @param {T} name
- * @param {U} bind
- * @returns {U}
- */
-const binding = (name, bind) => (
-  name in bindings &&
-    //@ts-ignore
-    (bind = rebind(bind, Object$1.getOwnPropertyDescriptor(bindings, name).get)),
-  //@ts-ignore
-  Object$1.defineProperty(bindings, name, {get: bind, set: bind, enumerable: true, configurable: true}),
-  bind
-);
-
-/// Scoped
-
-const scopedSelf = scoped('self', (typeof self === 'object' && self && self.self === self && self) || undefined);
-
-const scopedGlobal = scoped(
-  'global',
-  (typeof global === 'object' && global && global.global === global && global) || undefined,
-);
-
-scoped('Object', Object$1);
-
-const scope$1 = scopedSelf || scopedGlobal || (0, eval)('this');
-
-/// Bindings
-let Request;
-
-binding('Request', function() {
-  return arguments.length ? (Request = arguments[0]) : Request;
-})(scopedSelf && scopedSelf.Request);
-
-let Response;
-
-binding('Response', function() {
-  return arguments.length ? (Response = arguments[0]) : Response;
-})(scopedSelf && scopedSelf.Response);
-
-let Headers;
-
-binding('Headers', function() {
-  return arguments.length ? (Headers = arguments[0]) : Headers;
-})(scopedSelf && scopedSelf.Headers);
-
 function ModuleNamespace() {}
 {
 	const toPrimitive = setPrototypeOf(() => 'ModuleNamespace', null);
 	const toString = setPrototypeOf(() => 'class ModuleNamespace {}', null);
 	const {toJSON} = {
 		toJSON() {
-			return Object$1.getOwnPropertyNames(this);
+			return Object.getOwnPropertyNames(this);
 		},
 	};
 	ModuleNamespace.prototype = create(null, {
