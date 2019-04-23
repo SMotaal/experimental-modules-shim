@@ -5,15 +5,14 @@
 	"scripts": {
 		"serve": "http-server --cors -s",
 		"bundle": "rollup -c rollup.config.js",
-		"start": "node .",
-		"start:esm": "node --experimental-modules .",
-		"start:esm:dev": "node --experimental-modules . --dev",
-		"start:cjs": "node .",
-		"start:cjs:dev": "node . --dev"
+		"start": "node --experimental-modules esm.mjs --dev",
+		"start:esm": "node --experimental-modules esm.mjs",
+		"start:esm:dev": "node --experimental-modules esm.mjs --dev",
+		"start:cjs": "node ./legacy",
+		"start:cjs:dev": "node ./legacy --dev"
 	},
 	"type": "module",
 	"main": "esm.mjs",
-	"exports": {},
 	"devDependencies": {
 		"http-server": "*",
 		"rollup": "*",
