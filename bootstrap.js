@@ -48,7 +48,7 @@
 		})();
 	}
 })(
-	(1, eval)('this'),
+	(typeof globalThis === 'object' && globalThis) || (1, eval)('this'),
 	(typeof module === 'object' && module) || undefined,
 	(typeof require === 'function' && require) || undefined,
 );
