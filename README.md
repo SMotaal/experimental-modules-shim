@@ -1,4 +1,4 @@
-# Modules › Shim `alpha` <span float-right><small>[<kbd>GitHub</kbd>](https://github.com/SMotaal/experimental-modules-shim)</small></span>
+# Modules › Shim `alpha` [<kbd>GitHub</kbd>](https://github.com/SMotaal/experimental-modules-shim)
 
 Runtime-strapped Module subsystem.
 
