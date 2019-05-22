@@ -152,43 +152,57 @@
 				);
 		}
 	}
+	{
+		const cycles = (typeof CYCLES === 'number' && CYCLES > 1 && CYCLES) || 1;
+		const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
 
-	const cycles = (typeof CYCLES === 'number' && CYCLES > 1 && CYCLES) || 1;
-	const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
+		const ids = Object.keys(Module.map);
+		const mark = `${ids.length} Modules`;
+		const namespaces = new Set();
 
-	const ids = Object.keys(Module.map);
-	const mark = `${ids.length} Modules`;
-	const namespaces = new Set();
+		const {log, dir, error, group, groupEnd, time, timeEnd} = console;
 
-	const {log, dir, error, group, groupEnd, time, timeEnd} = console;
+		for (let n = cycles, k = ids.concat([...ids].reverse()); --n; ids.push(...k));
 
-	for (let n = cycles, k = ids.concat([...ids].reverse()); --n; ids.push(...k));
+		delay && (await new Promise(resolve => setTimeout(resolve, delay)));
 
-	delay && (await new Promise(resolve => setTimeout(resolve, delay)));
-
-	group(mark);
-	(({lib, mode, source} = {}) =>
-		log(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(DynamicModules.meta);
-	time(mark);
-	for (const id of ids) {
-		const mark = `Import "${id}"`;
 		group(mark);
-		try {
-			const module = Module.map[id];
-			time(mark);
-			const namespace = await Module.import(id);
-			timeEnd(mark);
-			if (namespaces.has(namespace)) continue;
-			namespaces.add(namespace);
-			dir({Module: module, Namespace: namespace, Exports: {...namespace}});
-		} catch (exception) {
-			error(exception);
-		} finally {
-			groupEnd();
+		(({lib, mode, source} = {}) =>
+			log(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(DynamicModules.meta);
+		time(mark);
+
+		const Indent = /(?:^|\n)([ \t]+)/;
+		const reindent = (source, newIndent = '') => {
+			source = `${source}`.replace(/^\t/gm, '  ');
+			const [, currentIndent] = Indent.exec(source) || '';
+			return currentIndent ? source.replace(new RegExp(`^${currentIndent}`, 'mg'), newIndent) : source;
+		};
+
+		for (const id of ids) {
+			const mark = `Import "${id}"`;
+			group(mark);
+			try {
+				const module = Module.map[id];
+				const {evaluator} = module;
+				const {sourceText, compiledText, moduleURL} = evaluator;
+				moduleURL && log('module-url: ', `${moduleURL}`);
+				sourceText && log('source-text: \n', reindent(`${sourceText}`, '\t'));
+				compiledText && log('compiled-text: \n', reindent(`${compiledText}`, '\t'));
+				time(mark);
+				const namespace = await Module.import(id);
+				timeEnd(mark);
+				if (namespaces.has(namespace)) continue;
+				namespaces.add(namespace);
+				dir({Module: module, Namespace: namespace, Exports: {...namespace}});
+			} catch (exception) {
+				error(exception);
+			} finally {
+				groupEnd();
+			}
 		}
+		timeEnd(mark);
+		groupEnd();
 	}
-	timeEnd(mark);
-	groupEnd();
 })();
 
 function globals(properties) {

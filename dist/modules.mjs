@@ -94,9 +94,6 @@ class ModuleNamespaces {
 
 /** ECMAScript quoted strings: `'…'` or `"…"`  */
 
-/** First coherent indent spaces in a string */
-const Indent = /(?:^|\n)([ \t]+)/;
-
 /** Mapped binding: `Identifier as BindingIdentifier` */
 const Mappings = /([^\s,]+)(?: +as +([^\s,]+))?/g;
 
@@ -1416,7 +1413,7 @@ const {compileModuleSourceText, compileFunction} = (() => {
 			} = token);
 
 			tokens.push({contextId, type, text, lineNumber, columnNumber, goal, group});
-			fragments.push(type !== 'inset' ? text : indent ? text.replace(indent, '\t') : ((indent = text), '\t'));
+			fragments.push(type !== 'inset' ? text : indent ? text.replace(indent, '  ') : ((indent = text), '  '));
 		}
 
 		return moduleSourceText;
@@ -1444,14 +1441,8 @@ const {compileModuleSourceText, compileFunction} = (() => {
 				.replace(/\bmodule\.await\s*\(/gs, 'module.await = (')
 				.replace(/\bmodule\.export\.default\s*=/gs, 'exports.default ='));
 
-		const moduleSourceText = new ModuleSourceText();
-		const {tokens, compiledText} = compileModuleSourceText(bodyText, moduleSourceText);
-
-		// groupCollapsed(bodyText);
-		// table(tokens);
-		// log(compiledText);
-		// groupEnd();
-
+		const moduleSourceText = compileModuleSourceText(bodyText, new ModuleSourceText());
+		// groupCollapsed(bodyText), table(moduleSourceText.tokens), log(moduleSourceText.compiledText),  groupEnd();
 		return moduleSourceText;
 	};
 
@@ -1464,93 +1455,54 @@ const {compileModuleSourceText, compileFunction} = (() => {
 	return {compileModuleSourceText, compileFunction};
 })();
 
-// const UNDEFINED = `${undefined}`;
+const ModuleEvaluator = (() => {
+	const evaluate = code => (0, eval)(code);
 
-// const intercepts = {
-// 	[UNDEFINED]: ({text}) => text,
-// };
+	const rewrite = source =>
+		`${source}`.replace(Exports, (match, mappings) => {
+			let bindings = [];
+			while ((match = Mappings.exec(mappings))) {
+				const [, identifier, binding] = match;
+				bindings.push(`${binding || '()'} => ${identifier}`);
+			}
+			return (bindings.length && `exports(${bindings.join(', ')})`) || '';
+		});
 
-// let intercept, text, type, goal, group, contextId, lineNumber, columnNumber;
+	return ({
+		source,
+		sourceText = `${source}`,
+		url: moduleURL,
+		compiledText = rewrite(typeof source === 'function' ? compileFunction(source) : sourceText),
+	}) => {
+		let match;
+		const evaluator = evaluate(
+			`(function* (module, exports) { with(module.scope) (function () { "use strict";\n${compiledText}${
+				moduleURL ? `//# sourceURL=${`${new URL(moduleURL, 'file:///')}`.replace(/^file:/i, 'virtual:')}\n` : ''
+			}})();})`,
+		);
+		evaluator.sourceText = sourceText;
+		evaluator.compiledText = compiledText;
+		evaluator.moduleURL = moduleURL;
+		const links = (evaluator.links = {});
 
-// token &&
-// 	({
-// 		text,
-// 		type,
-// 		goal: {name: goal},
-// 		group,
-// 		state: {
-// 			tokenContext: {id: contextId},
-// 		},
-// 		lineNumber,
-// 		columnNumber,
-// 	} = token) &&
-// 	text &&
-// 	(text = (intercepts[(intercept = `${goal} ${type} ${text}`)] ||
-// 		intercepts[(intercept = `${goal} ${type}`)] ||
-// 		intercepts[(intercept = `${goal} ${UNDEFINED}`)] ||
-// 		intercepts[(intercept = `${type}`)] ||
-// 		intercepts[(intercept = UNDEFINED)])(token)) &&
-// 	(tokens.push({contextId, type, text, lineNumber, columnNumber, goal, group}), fragments.push(text));
-
-const evaluate = code => (0, eval)(code);
-
-const wrap = (code, source, url, indent = '    ') => `
-(function* (module, exports) {
-  with(module.scope) (function () {
-    "use strict";
-${code}${url ? `\n\n${indent}//# sourceURL=${`${new URL(url, 'file:///')}`.replace(/^file:/i, 'virtual:')}` : ''}
-  })(void (
-		module.debug('module-url', module.meta.url),
-		module.debug('compiled-text', ${JSON.stringify(`\n${code}`)}),
-		module.debug('source-text', ${JSON.stringify(`\n${reindent(source, indent)}`)})
-	));
-})
-`;
-
-const reindent = (source, newIndent = '') => {
-	source = `${source}`.replace(/^\t/gm, '  ');
-	const [, currentIndent] = Indent.exec(source) || '';
-	return currentIndent ? source.replace(new RegExp(`^${currentIndent}`, 'mg'), newIndent) : source;
-};
-
-const rewrite = source =>
-	`${source}`.replace(Exports, (match, mappings) => {
-		let bindings = [];
-		while ((match = Mappings.exec(mappings))) {
-			const [, identifier, binding] = match;
-			bindings.push(`${binding || '()'} => ${identifier}`);
+		while ((match = BindingDeclarations.exec(compiledText))) {
+			const [, intent, bindings, binding, , specifier] = match;
+			const mappings = (
+				(binding && ((binding.startsWith('* ') && binding) || `default as ${binding}`)) ||
+				bindings ||
+				''
+			).split(/ *, */g);
+			while ((match = Mappings.exec(mappings))) {
+				const [, identifier, binding = identifier] = match;
+				freeze((links[binding] = {intent, specifier, identifier, binding}));
+			}
 		}
-		return (bindings.length && `exports(${bindings.join(', ')})`) || '';
-	});
 
-const ModuleEvaluator = ({
-	source,
-	// sourceText = (typeof source === 'function' && compileFunction(source)) || source,
-	sourceText = `${source}`,
-	url,
-	compiledText = rewrite(typeof source === 'function' ? compileFunction(source) : sourceText),
-}) => {
-	let match;
-	const evaluator = evaluate(wrap(compiledText, sourceText, url));
-	const links = (evaluator.links = {});
+		freeze(links);
 
-	while ((match = BindingDeclarations.exec(compiledText))) {
-		const [, intent, bindings, binding, , specifier] = match;
-		const mappings = (
-			(binding && ((binding.startsWith('* ') && binding) || `default as ${binding}`)) ||
-			bindings ||
-			''
-		).split(/ *, */g);
-		while ((match = Mappings.exec(mappings))) {
-			const [, identifier, binding = identifier] = match;
-			freeze((links[binding] = {intent, specifier, identifier, binding}));
-		}
-	}
-
-	freeze(links);
-
-	return evaluator;
-};
+		return evaluator;
+	};
+})();
 
 function ModuleNamespace() {}
 {
