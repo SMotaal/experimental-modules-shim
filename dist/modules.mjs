@@ -76,30 +76,25 @@ const {GlobalScope, ModuleScope} = (() => {
 })();
 
 class ModuleNamespaces {
-	constructor() {
+	constructor(importHostModule) {
+		setProperty(this, '[[importHostModule]]', importHostModule, true);
 		setProperty(this, '[[imports]]', create(null), true);
+		setProperty(
+			this,
+			'import',
+			importHostModule
+				? url =>
+						this[url] ||
+						(this['[[imports]]'][url] ||
+							(this['[[imports]]'][url] = this['[[importHostModule]]'](url)).then(
+								namespace => (bindProperty(this, url, () => namespace, true, false), namespace),
+							))
+				: this.import,
+			true,
+		);
 	}
 	import(url) {
-		return (
-			this[url] ||
-			(this['[[imports]]'][url] ||
-				(this['[[imports]]'][url] = DynamicModule.import(url)).then(
-					namespace => (bindProperty(this, url, () => namespace, true, false), namespace),
-				))
-		);
-		// 	setProperty(
-		// 		this,
-		// 		url,
-		// 		(this['[[imports]]'][url] || (this['[[imports]]'][url] = DynamicModule.import(url))).then(
-		// 			namespace => (bindProperty(this, url, () => namespace, true, false), namespace),
-		// 		),
-		// 		// (this['[[imports]]'][url] || (this['[[imports]]'][url] = DynamicModule.import(url))).then(
-		// 		// 	namespace => (bindProperty(this, url, () => namespace, true, false), namespace),
-		// 		// ),
-		// 		true,
-		// 		true,
-		// 	)
-		// );
+		throw Error('Unsupported operation: [[importHostModule]] is undefined!');
 	}
 }
 
@@ -1750,7 +1745,8 @@ class DynamicModule {
 		// setProperty(this, 'imports', create(null), enumerable);
 		setProperty(this, 'bindings', create(null), enumerable);
 		setProperty(this, 'links', {...evaluator.links}, enumerable, false);
-		this.namespaces || setProperty(new.target.prototype, 'namespaces', new ModuleNamespaces(), false);
+		this.namespaces ||
+			setProperty(new.target.prototype, 'namespaces', new ModuleNamespaces(url => new.target.import(url)), false);
 		this.constructor.map[url] = this;
 	}
 
