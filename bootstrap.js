@@ -8,10 +8,6 @@
 		throw Error(`Cannot reinitialize dynamic modules`);
 	}
 
-	// const importModule = mode === 'CJS' ? require : async specifier => import(specifier);
-	// const importModule = mode === 'CJS' ? require : global.dynamicImport;
-	//  || (1, eval)(`specifier => import(specifier)`);
-
 	module && module.exports && (module.exports = DynamicModules);
 
 	{
@@ -42,8 +38,8 @@
 				: global.dynamicImport
 				? await global.dynamicImport(lib)
 				: await (1, eval)(`specifier => import(specifier)`)(lib);
-			const {meta = (DynamicModules.meta = {})} = DynamicModules;
-			Object.assign(meta, {lib, source, mode});
+			const {setup = (DynamicModules.setup = {})} = DynamicModules;
+			Object.assign(setup, {lib, source, mode});
 			return DynamicModules;
 		})();
 	}
