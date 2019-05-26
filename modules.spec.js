@@ -13,14 +13,28 @@
 		ModuleScope,
 		DynamicModule,
 		setup = {},
-		setup: {LEVEL = 3, CYCLES = 0, DELAY = 1000, GLOBALS = true} = setup,
+		setup: {
+			SPECS = !(
+				(typeof process === 'object' &&
+					process.argv &&
+					(process.argv.includes('--compiler') || process.argv.includes('--nodes'))) ||
+				(typeof location === 'object' && /\bcompiler\b|\bnodes\b/.test(location.search))
+			),
+			SCOPES = SPECS,
+			GLOBALS = true,
+			CYCLES = 0,
+			LEVEL = SPECS ? 3 : 2,
+			DELAY = 1000,
+		} = setup,
 	} = globals().DynamicModules;
+
+	const node = typeof process === 'object';
 
 	const consoleOptions = {};
 
 	Runtime: {
 		const {log, dir, warn, error, group, groupEnd} = console;
-		const node = typeof process === 'object';
+
 		if (typeof console.internal === 'object') {
 			const globalThisSymbol = {[Symbol.toStringTag]: 'globalThis'};
 			consoleOptions.mappings = new Map([[ModuleScope.globalThis, globalThisSymbol], [globalThis, globalThisSymbol]]);
@@ -37,18 +51,19 @@
 		};
 		const resolvedPromise = Promise.resolve();
 		ModuleScope.test = async (ƒ, ...next) => {
-			ƒ.toString = toString;
+			node || (ƒ.toString = toString);
 			await (async () => await ƒ())()
 				.then(result => () => dir(result, consoleOptions))
 				.catch(reason => () => (node ? error(`${reason}`.split('\n', 1)[0]) : (reason.stack, error(reason))))
-				.then(log => (node ? group('%s', ƒ) : group(ƒ), log(), groupEnd()));
+				.then(log => (node ? group('\n%s', ƒ) : group(ƒ), log(), groupEnd()));
 			if (next.length) return ModuleScope.test(...next);
 		};
 	}
 
 	/// ESX Modules Experiment
 	Modules: {
-		LEVEL >= 0 &&
+		SCOPES &&
+			LEVEL >= 0 &&
 			new DynamicModule(
 				'level-0/module-scope',
 				module =>
@@ -63,7 +78,7 @@
 							() => (_an_undefined_variable_ = 1),
 							() => typeof _an_undefined_variable_,
 							() => new Object({a: 1}),
-							// This ones causes a Proxy/inspect related error for some reason
+							// NOTE: This threw proxy-related before node v12
 							() => (([Object, temp = Object, Object] = [undefined, undefined, Object]), temp),
 							() => LOCAL_CONSTANT === eval('LOCAL_CONSTANT'),
 							() => typeof Object,
@@ -84,8 +99,8 @@
 					void (() => {
 						// TODO: Throw when exported name is not a local binding
 						module.export`{ Object, Array }`;
-						let Object, Array;
-						module.export.default = {Object, Array} = globalThis;
+						// let {Object, Array} = globalThis;
+						module.export.default = globalThis;
 					}),
 				ModuleScope,
 			) &&
@@ -189,7 +204,7 @@
 			null;
 	}
 
-	Specs: {
+	if (SPECS) {
 		const cycles = (typeof CYCLES === 'number' && CYCLES > 1 && CYCLES) || 1;
 		const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
 
@@ -216,27 +231,55 @@
 		};
 
 		for (const id of ids) {
+			let module, evaluator, sourceText, compiledText, moduleURL, namespace;
 			const mark = `Import "${id}"`;
-			group(mark);
 
+			node && log();
+			group(mark);
 			try {
-				const module = DynamicModule.map[id];
-				const {evaluator} = module;
-				const {sourceText, compiledText, moduleURL} = evaluator;
+				module = {
+					evaluator,
+					evaluator: {sourceText, compiledText, moduleURL},
+				} = DynamicModule.map[id];
 				moduleURL && log('module-url: ', `${moduleURL}`);
 				sourceText && log('source-text: \n', reindent(`${sourceText}`, '\t'));
 				compiledText && log('compiled-text: \n', reindent(`${compiledText}`, '\t'));
 				time(mark);
-				const namespace = await DynamicModule.import(id);
+				namespace = await DynamicModule.import(id);
 				timeEnd(mark);
-				if (namespaces.has(namespace)) continue;
-				namespaces.add(namespace);
-				dir({Module: module, Namespace: namespace, Exports: {...namespace}}, consoleOptions);
 			} catch (exception) {
 				error(exception);
 			} finally {
+				if (namespace) {
+					if (namespaces.has(namespace)) continue;
+					namespaces.add(namespace);
+				}
+				dir({Module: module, Namespace: namespace, Exports: {...namespace}});
 				groupEnd();
+				node && log();
 			}
+
+			// 	const mark = `Import "${id}"`;
+			// 	group(mark);
+
+			// 	try {
+			// 		const module = DynamicModule.map[id];
+			// 		const {evaluator} = module;
+			// 		const {sourceText, compiledText, moduleURL} = evaluator;
+			// 		moduleURL && log('module-url: ', `${moduleURL}`);
+			// 		sourceText && log('source-text: \n', reindent(`${sourceText}`, '\t'));
+			// 		compiledText && log('compiled-text: \n', reindent(`${compiledText}`, '\t'));
+			// 		time(mark);
+			// 		const namespace = await DynamicModule.import(id);
+			// 		timeEnd(mark);
+			// 		if (namespaces.has(namespace)) continue;
+			// 		namespaces.add(namespace);
+			// 		dir({Module: module, Namespace: namespace, Exports: {...namespace}}, consoleOptions);
+			// 	} catch (exception) {
+			// 		error(exception);
+			// 	} finally {
+			// 		groupEnd();
+			// 	}
 		}
 		timeEnd(mark);
 		groupEnd();

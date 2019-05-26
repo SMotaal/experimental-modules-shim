@@ -18,7 +18,7 @@
 
 		const source = (process
 		? process.argv && process.argv.find(arg => /^--dev$|^-d$/i.test(arg))
-		: typeof location === 'object' && location && /[?&]dev/i.test(location.search))
+		: typeof location === 'object' && location && /[?&]dev\b/i.test(location.search))
 			? 'DEV'
 			: 'DIST';
 
