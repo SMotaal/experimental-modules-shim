@@ -1,0 +1,2 @@
+﻿class Name {}
+export {Name};
