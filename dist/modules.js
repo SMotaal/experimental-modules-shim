@@ -107,7 +107,7 @@
 	const Mappings = /([^\s,]+)(?: +as +([^\s,]+))?/g;
 
 	/** Quoted export mappings: `export {…}` */
-	const Exports = /`export *{([^}`;\*]*)}`/gm;
+	const Exports = /(\/\*\/|`)\s*export *{([^}`;\*\/\\()=+&|\-]*)}\s*(?:\1)/gm;
 
 	/** Nothing but Identifier Characters */
 	const Identifier = /[^\n\s\(\)\{\}\-=+*/%`"'~!&.:^<>,]+/;
@@ -485,7 +485,7 @@
 	    fold: false,
 	    openers: ['${'],
 	  },
-	  [Symbolic('FaultGoal')]: {type: 'fault', groups: {}},
+	  [Symbolic('FaultGoal')]: {type: 'fault'}, // , groups: {}
 	};
 
 	const {
@@ -536,9 +536,11 @@
 	  }
 
 	  for (const symbol of getOwnPropertySymbols(goals)) {
+	    // @ts-ignore
 	    const {[symbol]: goal} = goals;
 
 	    goal.name = (goal.symbol = symbol).description.replace(/Goal$/, '');
+	    goal[Symbol.toStringTag] = `«${goal.name}»`;
 	    goal.tokens = tokens[symbol] = {};
 	    goal.groups = [];
 
@@ -555,10 +557,11 @@
 
 	    if (goal.openers) {
 	      for (const opener of (goal.openers = [...goal.openers])) {
-	        const group = (goal.groups[opener] = groups[opener]);
+	        const group = (goal.groups[opener] = {...groups[opener]});
 	        punctuators[opener] = !(goal.openers[opener] = true);
 	        GoalSpecificTokenRecord(goal, group.opener, 'opener', {group});
 	        GoalSpecificTokenRecord(goal, group.closer, 'closer', {group});
+	        group[Symbol.toStringTag] = `‹${group.opener}›`;
 	      }
 	      freeze(setPrototypeOf(goal.openers, punctuators));
 	    }
@@ -621,9 +624,35 @@
 	 * @typedef {Record<ECMAScript.Keyword|ECMAScript.RestrictedWord|ECMAScript.FutureReservedWord|ECMAScript.ContextualKeyword, symbol>} ECMAScript.Keywords
 	 */
 
-	/** Creates a list from a Whitespace-separated string @type { (string) => string[] } */
-	const List = RegExp.prototype[Symbol.split].bind(/\s+/g);
+	const EmptyTokenArray = (EmptyTokenArray =>
+	  Object.freeze(
+	    new (Object.freeze(Object.freeze(Object.setPrototypeOf(EmptyTokenArray.prototype, null)).constructor, null))(),
+	  ))(
+	  class EmptyTokenArray {
+	    *[Symbol.iterator]() {}
+	  },
+	);
 
+	/** @type {(string: string, sequence: string , index?: number) => number} */
+	const indexOf = Function.call.bind(String.prototype.indexOf);
+	/** @type {(string: string) => number} */
+	const countLineBreaks = text => {
+	  let lineBreaks = 0;
+	  for (let index = -1; (index = indexOf(text, '\n', index + 1)) > -1; lineBreaks++);
+	  return lineBreaks;
+	};
+
+	/**
+	 * @typedef { Partial<{syntax: string, matcher: RegExp, [name:string]: Set | Map | {[name:string]: Set | Map | RegExp} }> } Mode
+	 * @typedef { {[name: string]: Mode} } Modes
+	 * @typedef { {[name: string]: {syntax: string} } } Mappings
+	 * @typedef { {aliases?: string[], syntax: string} } ModeOptions
+	 * @typedef { (options: ModeOptions, modes: Modes) => Mode } ModeFactory
+	 */
+
+	//@ts-check
+
+	/** @typedef {typeof stats} ContextStats */
 	const stats = {
 	  captureCount: 0,
 	  contextCount: 0,
@@ -633,7 +662,237 @@
 	  nestedTokenCount: 0,
 	};
 
-	/** @template {{}} T @param {T} context @returns {T & stats} */
+	/** @param {State} state */
+	// TODO: Document initializeState
+	const initializeState = state => {
+	  /** @type {Groups} state */
+	  (state.groups = []).closers = [];
+	  state.lineOffset = state.lineIndex = 0;
+	  state.totalCaptureCount = state.totalTokenCount = 0;
+
+	  /** @type {Contexts} */
+	  const contexts = (state.contexts = Array(100));
+	  const context = initializeContext({
+	    id: `«${state.matcher.goal.name}»`,
+	    //@ts-ignore
+	    number: (contexts.count = state.totalContextCount = 1),
+	    depth: 0,
+	    parentContext: undefined,
+	    goal: state.matcher.goal,
+	    group: undefined,
+	    state,
+	  });
+	  state.lastTokenContext = void (state.firstTokenContext = state.nextTokenContext = contexts[
+	    -1
+	  ] = state.context = state.lastContext = context);
+	};
+
+	/** @param {State} state */
+	// TODO: Document initializeState
+	const finalizeState = state => {
+	  const isValidState =
+	    state.firstTokenContext === state.nextTokenContext &&
+	    state.nextToken === undefined &&
+	    state.nextOffset === undefined;
+
+	  const {
+	    flags: {debug = false} = {},
+	    options: {console: {log = console.log, warn = console.warn} = console} = {},
+	    error = (state.error = !isValidState ? 'Unexpected end of tokenizer state' : undefined),
+	  } = state;
+
+	  if (!debug && error) throw Error(error);
+
+	  // Finalize latent token artifacts
+	  state.nextTokenContext = void (state.lastTokenContext = state.nextTokenContext);
+
+	  // Finalize tokenization artifacts
+	  // NOTE: don't forget to uncomment after debugging
+	  state.context = state.contexts = state.groups = undefined;
+
+	  // Output to console when necessary
+	  debug && (error ? warn : log)(`[tokenizer]: ${error || 'done'} — %O`, state);
+	};
+
+	/** @param {Match} match @param {State} state */
+	const createToken = (match, state) => {
+	  let currentGoal,
+	    // goalName,
+	    currentGoalType,
+	    contextId,
+	    contextNumber,
+	    contextDepth,
+	    contextGroup,
+	    parentContext,
+	    tokenReference,
+	    tokenContext,
+	    nextToken,
+	    text,
+	    type,
+	    fault,
+	    punctuator,
+	    offset,
+	    lineInset,
+	    lineBreaks,
+	    isDelimiter,
+	    isComment,
+	    isWhitespace,
+	    flatten,
+	    fold,
+	    columnNumber,
+	    lineNumber,
+	    tokenNumber,
+	    captureNumber,
+	    hint;
+
+	  const {
+	    context: currentContext,
+	    nextContext,
+	    lineIndex,
+	    lineOffset,
+	    nextOffset,
+	    lastToken,
+	    lastTrivia,
+	    lastAtom,
+	  } = state;
+
+	  /* Capture */
+	  ({
+	    0: text,
+	    capture: {inset: lineInset},
+	    identity: type,
+	    flatten,
+	    fault,
+	    punctuator,
+	    index: offset,
+	  } = match);
+
+	  if (!text) return;
+
+	  ({
+	    id: contextId,
+	    number: contextNumber,
+	    depth: contextDepth,
+	    goal: currentGoal,
+	    group: contextGroup,
+	    parentContext,
+	  } = tokenContext = (type === 'opener' && nextContext) || currentContext);
+
+	  currentGoalType = currentGoal.type;
+
+	  nextOffset &&
+	    (state.nextOffset = void (nextOffset > offset && (text = match.input.slice(offset, nextOffset)),
+	    (state.matcher.lastIndex = nextOffset)));
+
+	  lineBreaks = (text === '\n' && 1) || countLineBreaks(text);
+	  isDelimiter = type === 'closer' || type === 'opener';
+	  isWhitespace = !isDelimiter && (type === 'whitespace' || type === 'break' || type === 'inset');
+
+	  (isComment = type === 'comment' || punctuator === 'comment')
+	    ? (type = 'comment')
+	    : type || (type = (!isDelimiter && !fault && currentGoalType) || 'text');
+
+	  if (lineBreaks) {
+	    state.lineIndex += lineBreaks;
+	    state.lineOffset = offset + (text === '\n' ? 1 : text.lastIndexOf('\n'));
+	  }
+
+	  /* Flattening / Token Folding */
+
+	  flatten === false || flatten === true || (flatten = !isDelimiter && currentGoal.flatten === true);
+
+	  captureNumber = ++tokenContext.captureCount;
+	  state.totalCaptureCount++;
+
+	  if (
+	    (fold = flatten) && // fold only if flatten is allowed
+	    lastToken != null &&
+	    ((lastToken.contextNumber === contextNumber && lastToken.fold === true) ||
+	      (type === 'closer' && flatten === true)) && // never fold across contexts
+	    (lastToken.type === type || (currentGoal.fold === true && (lastToken.type = currentGoalType)))
+	  ) {
+	    lastToken.captureCount++;
+	    lastToken.text += text;
+	    lineBreaks && (lastToken.lineBreaks += lineBreaks);
+	  } else {
+	    // The generator retains this new as state.nextToken
+	    //   which means tokenContext is state.nextTokenContext
+	    //   and the fact that we are returning a token here will
+	    //   yield the current state.nextToken so we need to also
+	    //   set state.lastTokenContext to match
+	    //
+	    //   TODO: Add parity tests for tokenizer's token/context states
+	    state.lastTokenContext = state.nextTokenContext;
+	    state.nextTokenContext = tokenContext;
+
+	    /* Token Creation */
+	    flatten = false;
+	    columnNumber = 1 + (offset - lineOffset || 0);
+	    lineNumber = 1 + (lineIndex || 0);
+
+	    tokenNumber = ++tokenContext.tokenCount;
+	    state.totalTokenCount++;
+
+	    // hint = `${(isDelimiter ? type : currentGoalType && `in-${currentGoalType}`) ||
+	    hint = `${
+      isDelimiter ? type : currentGoalType ? `in-${currentGoalType}` : ''
+    }\n\n${contextId} #${tokenNumber}\n(${lineNumber}:${columnNumber})`;
+
+	    tokenReference = isWhitespace || isComment ? 'lastTrivia' : 'lastAtom';
+
+	    nextToken = tokenContext[tokenReference] = state[tokenReference] = tokenContext.lastToken = state.lastToken = {
+	      text,
+	      type,
+	      offset,
+	      punctuator,
+	      hint,
+	      lineOffset,
+	      lineBreaks,
+	      lineInset,
+	      columnNumber,
+	      lineNumber,
+	      captureNumber,
+	      captureCount: 1,
+	      tokenNumber,
+	      contextNumber,
+	      contextDepth,
+
+	      isWhitespace, // whitespace:
+	      isDelimiter, // delimiter:
+	      isComment, // comment:
+
+	      // FIXME: Nondescript
+	      fault,
+	      fold,
+	      flatten,
+
+	      goal: currentGoal,
+	      group: contextGroup,
+	      state,
+	    };
+	  }
+	  /* Context */
+	  !nextContext ||
+	    ((state.nextContext = undefined), nextContext === currentContext) ||
+	    ((state.lastContext = currentContext),
+	    currentContext === nextContext.parentContext
+	      ? (state.totalContextCount++,
+	        (nextContext.precedingAtom = lastAtom),
+	        (nextContext.precedingTrivia = lastTrivia),
+	        (nextContext.precedingToken = lastToken))
+	      : ((parentContext.nestedContextCount += currentContext.nestedContextCount + currentContext.contextCount),
+	        (parentContext.nestedCaptureCount += currentContext.nestedCaptureCount + currentContext.captureCount),
+	        (parentContext.nestedTokenCount += currentContext.nestedTokenCount + currentContext.tokenCount)),
+	    (state.context = nextContext));
+
+	  return nextToken;
+	};
+
+	/**
+	 * @param {Partial<Context>} context
+	 * @returns {Context}
+	 */
+	//@ts-ignore
 	const initializeContext = context => Object.assign(context, stats);
 
 	const capture = (identity, match, text) => {
@@ -645,8 +904,8 @@
 	/**
 	 * Safely mutates matcher state to open a new context.
 	 *
-	 * @param {*} text - Text of the intended { type = "opener" } token
-	 * @param {*} state - Matcher state
+	 * @param {string} text - Text of the intended { type = "opener" } token
+	 * @param {State} state - Matcher state
 	 * @returns {undefined | string} - String when context is **not** open
 	 */
 	const open = (text, state) => {
@@ -668,7 +927,9 @@
 	  const goal = group.goal === undefined ? initialGoal : group.goal;
 
 	  state.nextContext = contexts[index] = initializeContext({
-	    id: `${parentContext.id}${goal !== initialGoal ? ` ‹${group.opener}›\n«${goal.name}»` : ` ‹${group.opener}›`}`,
+	    id: `${parentContext.id} ${
+      goal !== initialGoal ? `\n${goal[Symbol.toStringTag]} ${group[Symbol.toStringTag]}` : group[Symbol.toStringTag]
+    }`,
 	    number: ++contexts.count,
 	    depth: index + 1,
 	    parentContext,
@@ -681,14 +942,13 @@
 	/**
 	 * Safely mutates matcher state to close the current context.
 	 *
-	 * @param {*} text - Text of the intended { type = "closer" } token
-	 * @param {*} state - Matcher state
+	 * @param {string} text - Text of the intended { type = "closer" } token
+	 * @param {State} state - Matcher state
 	 * @returns {undefined | string} - String when context is **not** closed
 	 */
 	const close = (text, state) => {
 	  const groups = state.groups;
 	  const index = groups.closers.lastIndexOf(text);
-
 
 	  if (index === -1 || index !== groups.length - 1) return fault(text, state);
 
@@ -697,6 +957,15 @@
 	  state.nextContext = state.context.parentContext;
 	};
 
+	/**
+	 * Safely mutates matcher state to skip ahead.
+	 *
+	 * TODO: Finish implementing forward helper
+	 *
+	 * @param {string | RegExp} search
+	 * @param {Match} match
+	 * @param {State} state
+	 */
 	const forward = (search, match, state) => {
 	  search &&
 	    (typeof search === 'object'
@@ -712,8 +981,15 @@
 	  return 'fault';
 	};
 
+	/** @typedef {import('./types').Match} Match */
+	/** @typedef {import('./types').Groups} Groups */
+	/** @typedef {import('./types').Context} Context */
+	/** @typedef {import('./types').Contexts} Contexts */
+	/** @typedef {import('./types').State} State */
+
 	const matcher = (ECMAScript =>
 	  Matcher.define(
+	    // Matcher generator for this matcher instance
 	    entity =>
 	      Matcher.join(
 	        entity(ECMAScript.Break()),
@@ -729,13 +1005,33 @@
 	        entity(ECMAScript.Keyword()),
 	        entity(ECMAScript.Number()),
 	        entity(ECMAScript.Identifier()),
-	        /* Fallthrough */ '.',
+
+	        // Defines how to address non-entity character(s):
+	        entity(
+	          ECMAScript.Fallthrough({
+	            // type: 'fault',
+	          }),
+	        ),
 	      ),
+	    // RegExp flags for this matcher instance
 	    'gu',
+	    // Property descriptors for this matcher instance
 	    {
 	      goal: {value: ECMAScriptGoal, enumerable: true, writable: false},
 	    },
 	  ))({
+	  Fallthrough: ({fallthrough = '.', type, flatten} = {}) =>
+	    Matcher.define(
+	      (typeof fallthrough === 'string' || (fallthrough = '.'), type && typeof type === 'string')
+	        ? entity => Matcher.sequence`(
+            ${fallthrough}
+            ${entity((text, entity, match, state) => {
+              capture(type === 'fault' ? fault(text, state) : type, match, text);
+              typeof flatten === 'boolean' && (match.flatten = flatten);
+            })}
+          )`
+	        : entity => `${fallthrough}`,
+	    ),
 	  Break: ({lf = true, crlf = false} = {}) =>
 	    Matcher.define(
 	      entity => Matcher.sequence`(
@@ -786,7 +1082,7 @@
         \\f|\\n|\\r|\\t|\\v|\\c[${ControlLetter}]
         |\\x[${HexDigit}][${HexDigit}]
         |\\u\{[${HexDigit}]*\}
-        |\\.
+        |\\[^]
         ${entity((text, entity, match, state) => {
           capture(state.context.goal.type || 'escape', match, (match.capture[keywords[text]] = text));
         })}
@@ -805,7 +1101,8 @@
                   // Safely fast skip to end of comment
                   (forward(text === '//' ? '\n' : '*/', match, state),
                   // No need to track delimiter
-                  CommentGoal.type)
+                  (match.punctuator = CommentGoal.type),
+                  'opener')
               : context.goal !== CommentGoal
               ? context.goal.type || 'sequence'
               : context.group.closer !== text
@@ -998,7 +1295,7 @@
             state.context.goal !== ECMAScriptGoal
               ? state.context.goal.type || 'sequence'
               : (previousToken = state.lastToken) && previousToken.punctuator === 'pattern' && RegExpFlags.test(text)
-              ? ((match.punctuator = RegExpGoal.type), 'closer')
+              ? ((match.flatten = true), (match.punctuator = RegExpGoal.type), 'closer')
               : ((match.flatten = true), 'identifier'),
             match,
             text,
@@ -1032,32 +1329,6 @@
       )\b`,
 	    ),
 	});
-
-	const EmptyTokenArray = (EmptyTokenArray =>
-	  Object.freeze(
-	    new (Object.freeze(Object.freeze(Object.setPrototypeOf(EmptyTokenArray.prototype, null)).constructor, null))(),
-	  ))(
-	  class EmptyTokenArray {
-	    *[Symbol.iterator]() {}
-	  },
-	);
-
-	/** @type {(string: string, sequence: string , index?: number) => number} */
-	const indexOf = Function.call.bind(String.prototype.indexOf);
-	/** @type {(string: string) => number} */
-	const countLineBreaks = text => {
-	  let lineBreaks = 0;
-	  for (let index = -1; (index = indexOf(text, '\n', index + 1)) > -1; lineBreaks++);
-	  return lineBreaks;
-	};
-
-	/**
-	 * @typedef { Partial<{syntax: string, matcher: RegExp, [name:string]: Set | Map | {[name:string]: Set | Map | RegExp} }> } Mode
-	 * @typedef { {[name: string]: Mode} } Modes
-	 * @typedef { {[name: string]: {syntax: string} } } Mappings
-	 * @typedef { {aliases?: string[], syntax: string} } ModeOptions
-	 * @typedef { (options: ModeOptions, modes: Modes) => Mode } ModeFactory
-	 */
 
 	/// <reference path="./types.d.ts" />
 
@@ -1163,6 +1434,8 @@
 	            (state.nextToken = void (next = token)))
 	          );
 
+	          this.finalizeState && this.finalizeState(state);
+
 	          // console.log({...state});
 	        }
 	      }.prototype,
@@ -1183,6 +1456,7 @@
 	      createToken: createTokenFromMatch,
 	      /** @type {(state: {}) =>  void} */
 	      initializeState: undefined,
+	      finalizeState: undefined,
 	      matcher: freeze(createMatcherInstance(matcher)),
 	    });
 
@@ -1194,6 +1468,7 @@
 	        preregister: mode.preregister,
 	        createToken: tokenizer.createToken = tokenizer.createToken,
 	        initializeState: tokenizer.initializeState,
+	        finalizeState: tokenizer.finalizeState,
 	        ...mode.overrides
 	      } = options);
 
@@ -1205,225 +1480,229 @@
 	  return {createTokenFromMatch, createMatcherInstance, createString, createMatcherTokenizer, createMatcherMode};
 	})();
 
+	//@ts-check
+
 	const mode = createMatcherMode(matcher, {
 	  syntax: 'ecmascript',
 	  aliases: ['es', 'js', 'javascript'],
-	  initializeState: state => {
-	    (state.groups = []).closers = [];
-	    state.lineOffset = state.lineIndex = 0;
-	    state.lineFault = false;
-	    state.totalCaptureCount = state.totalTokenCount = 0;
-	    const contexts = (state.contexts = Array(100));
-	    const context = initializeContext({
-	      id: `«${matcher.goal.name}»`,
-	      number: (contexts.count = state.totalContextCount = 1),
-	      depth: 0,
-	      parentContext: undefined,
-	      goal: matcher.goal,
-	      group: undefined,
-	      state,
-	    });
-	    state.tokenContext = void (contexts[-1] = state.context = state.lastContext = context);
-	  },
+
 	  preregister: parser => {
 	    parser.unregister('es');
 	    parser.unregister('ecmascript');
 	  },
-	  createToken: (match, state) => {
-	    let currentGoal,
-	      // goalName,
-	      currentGoalType,
-	      contextId,
-	      contextNumber,
-	      contextDepth,
-	      contextGroup,
-	      parentContext,
-	      tokenReference,
-	      nextToken,
-	      text,
-	      type,
-	      fault,
-	      punctuator,
-	      offset,
-	      lineInset,
-	      lineBreaks,
-	      isDelimiter,
-	      isComment,
-	      isWhitespace,
-	      flatten,
-	      fold,
-	      columnNumber,
-	      lineNumber,
-	      tokenNumber,
-	      captureNumber,
-	      hint;
 
-	    const {
-	      context: currentContext,
-	      nextContext,
-	      lineIndex,
-	      lineOffset,
-	      nextOffset,
-	      lastToken,
-	      lastTrivia,
-	      lastAtom,
-	    } = state;
-
-	    /* Capture */
-
-	    ({
-	      0: text,
-	      capture: {inset: lineInset},
-	      identity: type,
-	      flatten,
-	      fault,
-	      punctuator,
-	      index: offset,
-	    } = match);
-
-	    if (!text) return;
-
-	    // try {
-	    ({
-	      id: contextId,
-	      number: contextNumber,
-	      depth: contextDepth,
-	      goal: currentGoal,
-	      group: contextGroup,
-	      parentContext,
-	    } = state.tokenContext = currentContext);
-
-	    currentGoalType = currentGoal.type; // ({name: goalName, type: goalType} = currentGoal);
-
-	    nextOffset &&
-	      (state.nextOffset = void (nextOffset > offset && (text = match.input.slice(offset, nextOffset)),
-	      (state.matcher.lastIndex = nextOffset)));
-
-	    lineBreaks = (text === '\n' && 1) || countLineBreaks(text);
-	    isComment = type === 'comment' || punctuator === 'comment';
-	    isDelimiter = type === 'closer' || type === 'opener';
-	    isWhitespace = !isDelimiter && (type === 'whitespace' || type === 'break' || type === 'inset');
-
-	    type || (type = (!isDelimiter && !fault && currentGoalType) || 'text');
-
-	    if (lineBreaks) {
-	      state.lineIndex += lineBreaks;
-	      state.lineOffset = offset + (text === '\n' ? 1 : text.lastIndexOf('\n'));
-	    }
-
-	    /* Flattening / Token Folding */
-
-	    flatten === false || flatten === true || (flatten = !isDelimiter && currentGoal.flatten === true);
-
-	    captureNumber = ++currentContext.captureCount;
-	    state.totalCaptureCount++;
-
-	    if (
-	      (fold = flatten) && // fold only if flatten is allowed
-	      lastToken != null &&
-	      lastToken.contextNumber === contextNumber && // never fold across contexts
-	      lastToken.fold === true &&
-	      (lastToken.type === type || (currentGoal.fold === true && (lastToken.type = currentGoalType)))
-	    ) {
-	      lastToken.captureCount++;
-	      lastToken.text += text;
-	      lineBreaks && (lastToken.lineBreaks += lineBreaks);
-	    } else {
-	      /* Token Creation */
-	      flatten = false;
-	      columnNumber = 1 + (offset - lineOffset || 0);
-	      lineNumber = 1 + (lineIndex || 0);
-
-	      tokenNumber = ++currentContext.tokenCount;
-	      state.totalTokenCount++;
-
-	      hint = `${(isDelimiter ? type : currentGoalType && `in-${currentGoalType}`) ||
-        ''}\n${contextId} #${tokenNumber}\n(${lineNumber}:${columnNumber})`;
-
-	      tokenReference = isWhitespace || isComment ? 'lastTrivia' : 'lastAtom';
-
-	      nextToken = currentContext[tokenReference] = state[
-	        tokenReference
-	      ] = currentContext.lastToken = state.lastToken = {
-	        text,
-	        type,
-	        offset,
-	        punctuator,
-	        hint,
-	        lineOffset,
-	        lineBreaks,
-	        lineInset,
-	        columnNumber,
-	        lineNumber,
-	        captureNumber,
-	        captureCount: 1,
-	        tokenNumber,
-	        contextNumber,
-	        contextDepth,
-
-	        isWhitespace, // whitespace:
-	        isDelimiter, // delimiter:
-	        isComment, // comment:
-
-	        // FIXME: Nondescript
-	        fault,
-	        fold,
-	        flatten,
-
-	        goal: currentGoal,
-	        group: contextGroup,
-	        state,
-	      };
-	    }
-	    /* Context */
-	    !nextContext ||
-	      ((state.nextContext = undefined), nextContext === currentContext) ||
-	      ((state.lastContext = currentContext),
-	      currentContext === nextContext.parentContext
-	        ? (state.totalContextCount++,
-	          (nextContext.precedingAtom = lastAtom),
-	          (nextContext.precedingTrivia = lastTrivia),
-	          (nextContext.precedingToken = lastToken))
-	        : ((parentContext.nestedContextCount += currentContext.nestedContextCount + currentContext.contextCount),
-	          (parentContext.nestedCaptureCount += currentContext.nestedCaptureCount + currentContext.captureCount),
-	          (parentContext.nestedTokenCount += currentContext.nestedTokenCount + currentContext.tokenCount)),
-	      (state.context = nextContext));
-
-	    return nextToken;
-	  },
+	  initializeState,
+	  finalizeState,
+	  createToken,
 	});
 
 	const {syntax, tokenizer} = mode;
 
-	// TODO: Swap to load from source vs. bundles
+	const Token = class Token {};
+	const Unknown = class Unknown extends Token {};
+	const Atom = class Atom extends Token {};
 
-	const {compileModuleSourceText, compileFunction} = (() => {
+	Object.setPrototypeOf(Token.prototype, null);
+	Object.setPrototypeOf(Atom.prototype, null);
+	Object.setPrototypeOf(Unknown.prototype, null);
+
+	const Node = (() => {
+		const push = Function.call.bind(Array.prototype.push);
+
+		/** @extends {ArrayLike<Token | Node | Text>} */
+		class Node extends Array {
+			/**
+			 * @param {tokenizer.Context} context
+			 * @param {Node} [parentNode]
+			 * @param {number} [number]
+			 */
+			constructor(context, parentNode, number) {
+				super();
+				number >= 0 && (this.number = number);
+				this.context = context;
+				/** @type {Token | Node | Text} */
+				this.previousNode = this.nextNode = this.firstNode = this.lastNode = undefined;
+				/** @type {Token} */
+				this.firstToken = this.lastToken = undefined;
+				(this.parentNode = parentNode || undefined) && parentNode.appendChild(this);
+			}
+
+			/** @param {Token | Node | Text} child */
+			appendChild(child) {
+				(child.previousNode = this[push((child.parentNode = this), (this.lastNode = child)) - 2])
+					? (child.previousNode.nextNode = child)
+					: (this.firstNode = child);
+				return child;
+			}
+
+			/**
+			 * @param {string} text
+			 * @param {string} [type]
+			 * @param {typeof Token} [Species]
+			 */
+			appendText(text, type, Species) {
+				return this.appendChild(new (Species || Text)(text, type));
+			}
+
+			/**
+			 * @param {Token} token
+			 * @param {typeof Token} [Species]
+			 */
+			appendToken(token, Species) {
+				if (this.appendChild(token) === token) {
+					Object.setPrototypeOf(token, (Species = Species || Unknown).prototype);
+
+					token[Symbol.toStringTag] = `${Species.name} ‹${token.type}›`;
+
+					(token.previousToken = this.lastToken) && (token.previousToken.nextToken = token);
+					this.lastToken = token;
+					this.firstToken === undefined && (this.firstToken = token);
+				}
+				return token;
+			}
+		}
+
+		Object.defineProperties(Object.setPrototypeOf(Node.prototype, null), {
+			[Symbol.iterator]: Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator),
+		});
+
+		return Node;
+	})();
+
+	// const BlockClosure = class BlockClosure extends Node {};
+	const Root = class Root extends Node {};
+	const Closure = class Closure extends Node {};
+
+	const Text = class Text extends String {
+		/** @param {string} text @param {string} [type] */
+		constructor(text, type) {
+			super(text);
+			this.text = this;
+			this[Symbol.toStringTag] = `${new.target.name || text} ‹${(this.type = type || 'unknown')}›`;
+		}
+	};
+
+	//@ts-check
+
+	const {compileModuleSourceText, compileFunction} = (({console}) => {
+		const {DEBUG_COMPILER, DEBUG_CONSTRUCTS} = Flags();
+
+		const {log, warn, group, groupCollapsed, groupEnd, table} = console;
+
+		const Collator = class Collator {
+			/** @param {string} goal */
+			constructor(goal) {
+				this.goal = goal;
+				this.declarations = [];
+				this.faults = [];
+				this.map = new WeakMap();
+				this.nodeCount = 0;
+				this.tokenCount = 0;
+				/** @type {Node} */
+				this.firstNode = this.lastNode = undefined;
+				/** @type {tokenizer.Token} */
+				this.firstToken = this.lastToken = this.nextToken = undefined;
+				/** @type {tokenizer.Context} */
+				this.firstContext = this.lastContext = undefined;
+			}
+
+			/**
+			 * @param {tokenizer.Token} token
+			 * @param {tokenizer.Context} tokenContext
+			 */
+			next(token, tokenContext) {
+				let node;
+				const {
+					text,
+					type,
+					goal: {name},
+					group,
+					isWhitespace,
+					isDelimiter,
+					isComment,
+					contextDepth,
+					contextNumber,
+					lineNumber,
+					columnNumber,
+					state: {nextToken},
+				} = token;
+
+				this.firstNode === undefined
+					? ((this.firstToken = token),
+					  this.map.set(
+							(this.firstContext = tokenContext),
+							(node = this.firstNode = new Root(tokenContext, undefined, this.nodeCount++)),
+					  ))
+					: (tokenContext === this.lastContext && (node = this.lastNode)) ||
+					  ((node = this.map.get(tokenContext)) ||
+							this.map.set(
+								tokenContext,
+								(node = new Closure(tokenContext, this.lastContext && this.map.get(this.lastContext), this.nodeCount++)),
+							));
+
+				this.lastContext = tokenContext;
+				this.lastNode = node;
+				this.nextToken = nextToken;
+				this.lastToken = token;
+				// ({firstToken, lastToken, tokens} = node);
+
+				switch (type) {
+					case 'comment':
+					case 'inset':
+					case 'whitespace':
+						return node.appendText(text, type);
+					case 'pattern':
+					case 'quote':
+					case 'number':
+					case 'identifier':
+					case 'operator':
+					case 'keyword':
+					case 'break':
+					case 'opener':
+					case 'closer':
+						return node.appendToken(token, Atom);
+					default:
+						return node.appendToken(token);
+				}
+			}
+		};
+
+		/** @param {string} text @returns {tokenizer.Tokens} */
+		const tokenize = text => tokenizer.tokenize(text, {console});
+
 		const compileBody = (bodyText, moduleSourceText) => {
-			let indent, text, type, goal, group, contextId, lineNumber, columnNumber;
 			const {
 				fragments = (moduleSourceText.fragments = []),
 				tokens = (moduleSourceText.tokens = []),
 				bindings = (moduleSourceText.bindings = []),
 			} = moduleSourceText;
 
-			for (const token of tokenizer.tokenize(bodyText)) {
-				if (!token || !token.text) continue;
+			const collator = new Collator('ECMAScript');
 
-				({
+			for (const token of tokenize(bodyText)) {
+				if (!token || !token.text) continue;
+				let indent;
+				const {
 					text,
 					type,
 					goal: {name: goal},
 					group,
 					state: {
-						tokenContext: {id: contextId},
+						lastTokenContext: tokenContext,
+						lastTokenContext: {id: contextId},
 					},
 					lineNumber,
 					columnNumber,
-				} = token);
+				} = token;
 
-				tokens.push({contextId, type, text, lineNumber, columnNumber, goal, group});
+				// const node = (goal === collator.goal && collator.next(token, tokenContext)) || undefined;
+				const node = collator.next(token, tokenContext) || undefined;
+
+				type === 'whitespace' || tokens.push({node, contextId, type, text, lineNumber, columnNumber, goal, group});
 				fragments.push(type !== 'inset' ? text : indent ? text.replace(indent, '  ') : ((indent = text), '  '));
 			}
+
+			moduleSourceText.rootNode = collator.firstNode;
 
 			return moduleSourceText;
 		};
@@ -1431,47 +1710,102 @@
 		const compileModuleSourceText = (bodyText, moduleSourceText) => {
 			compileBody(bodyText, moduleSourceText);
 			moduleSourceText.compiledText = moduleSourceText.fragments.join('');
+
 			return moduleSourceText;
 		};
 
 		const compileFunction = sourceText => {
 			let bodyText;
 
-			const {log, warn, group, groupCollapsed, groupEnd, table} = console.internal || console;
-
-			[, bodyText = ''] = /^\s*module\s*=>\s*void\s*\(\s*\(\s*\)\s*=>\s*\{[ \t]*?\n?(.*)\s*\}\s*\)\s*;?\s*$/s.exec(
+			[
+				,
+				bodyText = '',
+			] = /^[\s\n]*module[\s\n]*=>[\s\n]*void[\s\n]*\([\s\n]*\([\s\n]*\)[\s\n]*=>[\s\n]*\{[ \t]*?\n?([^]*)[\s\n]*\}[\s\n]*\)[\s\n]*;?[\s\n]*$/.exec(
 				sourceText,
 			);
 
 			bodyText &&
 				(bodyText = bodyText
-					.replace(/\bmodule\.import`/g, '`import ')
-					.replace(/\bmodule\.export`/g, '`export ')
-					.replace(/\bmodule\.await\s*\(/gs, 'module.await = (')
-					.replace(/\bmodule\.export\.default\s*=/gs, 'exports.default ='));
+					.replace(/\bmodule\.import`([^`]*)`/g, ' /*‹*/ import $1 /*›*/ ')
+					.replace(/\bmodule\.export`([^`]*)`/g, ' /*‹*/ export $1 /*›*/ ')
+					.replace(/\bmodule\.await[\s\n]*\(/g, 'module.await = (')
+					.replace(/\bmodule\.export\.default[\s\n]*=/g, ' /*‹*/ export default /*›*/ '));
 
 			const moduleSourceText = compileModuleSourceText(bodyText, new ModuleSourceText());
-			// groupCollapsed(bodyText), table(moduleSourceText.tokens), log(moduleSourceText.compiledText),  groupEnd();
+
+			moduleSourceText.compiledText = moduleSourceText.compiledText
+				.replace(/ \/\*‹\*\/ export default \/\*›\*\/ /g, 'exports.default =')
+				.replace(/ \/\*‹\*\/(.*?)\/\*›\*\/ /g, '/*/$1/*/');
+
+			DEBUG_COMPILER &&
+				((DEBUG_CONSTRUCTS ? group : groupCollapsed)(bodyText),
+				// moduleSourceText.moduleSourceText.tokens.map(debugToken),
+				// log(moduleSourceText.compiledText),
+				log(moduleSourceText),
+				// table(moduleSourceText.rootNode, [
+				// 	'tokenNumber',
+				// 	'contextNumber',
+				// 	'contextDepth',
+				// 	Symbol.toStringTag,
+				// 	'text',
+				// 	'lineNumber',
+				// 	'columnNumber',
+				// 	'punctuator',
+				// ]),
+				groupEnd());
+
+			//  : table(moduleSourceText.tokens)
+
 			return moduleSourceText;
 		};
 
 		class ModuleSourceText {
+			constructor() {
+				/** @type {string} */
+				this.compiledText = undefined;
+				/** @type {Node} */
+				this.rootNode = undefined;
+			}
 			toString() {
 				return this.compiledText;
 			}
 		}
 
 		return {compileModuleSourceText, compileFunction};
-	})();
+	})({console: console.internal || console});
+
+	/** @typedef {import('/markup/experimental/es/types').Token} tokenizer.Token */
+	/** @typedef {Iterable<tokenizer.Token>} tokenizer.Tokens */
+	/** @typedef {import('/markup/experimental/es/types').Match} tokenizer.Match */
+	/** @typedef {import('/markup/experimental/es/types').Capture} tokenizer.Capture */
+	/** @typedef {import('/markup/experimental/es/types').Group} tokenizer.Group */
+	/** @typedef {import('/markup/experimental/es/types').Groups} tokenizer.Groups */
+	/** @typedef {import('/markup/experimental/es/types').Goal} tokenizer.Goal */
+	/** @typedef {import('/markup/experimental/es/types').Context} tokenizer.Context */
+	/** @typedef {import('/markup/experimental/es/types').Contexts} tokenizer.Contexts */
+	/** @typedef {import('/markup/experimental/es/types').State} tokenizer.State */
+
+	/** @param {{[name: string]: boolean}} param0 */
+	function Flags({DEBUG_COMPILER, DEBUG_CONSTRUCTS} = {}) {
+		if (typeof location === 'object' && 'search' in location) {
+			DEBUG_COMPILER = /\bcompiler\b|\bnodes\b/.test(location.search);
+			DEBUG_CONSTRUCTS = /\bnodes\b/.test(location.search);
+		} else if (typeof process === 'object' && process.argv) {
+			DEBUG_COMPILER = process.argv.includes('--compiler') || process.argv.includes('--nodes');
+			DEBUG_CONSTRUCTS = process.argv.includes('--nodes');
+		}
+		return {DEBUG_COMPILER, DEBUG_CONSTRUCTS};
+	}
 
 	const ModuleEvaluator = (() => {
 		const evaluate = code => (0, eval)(code);
 
 		const rewrite = source =>
-			`${source}`.replace(Exports, (match, mappings) => {
-				let bindings = [];
+			// TODO: Handle shadows and redudant exports!
+			`${source}`.replace(Exports, (match, guard, mappings) => {
+				const bindings = [];
 				while ((match = Mappings.exec(mappings))) {
-					const [, identifier, binding] = match;
+					let {1: identifier, 2: binding} = match;
 					bindings.push(`${binding || '()'} => ${identifier}`);
 				}
 				return (bindings.length && `exports(${bindings.join(', ')})`) || '';
@@ -1481,7 +1815,7 @@
 			source,
 			sourceText = `${source}`,
 			url: moduleURL,
-			compiledText = rewrite(typeof source === 'function' ? compileFunction(source) : sourceText),
+			compiledText = rewrite(typeof source === 'function' ? compileFunction(source).compiledText : sourceText),
 		}) => {
 			let match;
 			const evaluator = evaluate(
@@ -1745,7 +2079,6 @@
 			setProperty(this, 'evaluator', (evaluator = ModuleEvaluator({source: evaluator, url})), enumerable);
 			setProperty(this, 'scope', scope, enumerable);
 			setProperty(this, 'context', create(null, contextuals), enumerable, false);
-			// setProperty(this, 'imports', create(null), enumerable);
 			setProperty(this, 'bindings', create(null), enumerable);
 			setProperty(this, 'links', {...evaluator.links}, enumerable, false);
 			this.namespaces ||
