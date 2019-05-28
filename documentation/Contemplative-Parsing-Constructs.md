@@ -94,6 +94,6 @@ For instance, a collective construct that tries to invalidate the above statemen
 1. Ensure that the runtime (or bundler) does not opt for this extra syntax.
 2. Ensure that the spec did not change since last updated your code.
 
-It is not impossible to do, but the added complexity is exponential and the bottomline is that the more you patching logic to accommodate unforeseen changes, the more you risk breaking existing use cases, and end up either making trade-offs… and so forth.
+It is not impossible to do, but the added complexity is exponential and the bottomline is that the more patching you do to accommodate unforeseen changes, the more you risk breaking existing use cases, and end up making trade-offs with far less clarity… and so forth.
 
 So, while runtime parsers must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operate on texts.
