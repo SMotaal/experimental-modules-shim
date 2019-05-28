@@ -1511,7 +1511,7 @@ const CurrentConstruct = Symbol('Construct.currentConstruct');
 
 //@ts-check
 
-const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() => {
+const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} = (() => {
 	const push = Function.call.bind(Array.prototype.push);
 
 	/** @type {boolean} */
@@ -1543,26 +1543,38 @@ const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() =>
 		constructor(nodeType) {
 			this.nodeType = nodeType;
 
+			this[Symbol.toStringTag] = nodeType == null ? new.target.name : `${new.target.name} ⟨${nodeType}⟩`;
+
 			if (new.target.RETAIN_TOKEN_CONTEXTS === true)
 				/** @type {TokenizerContext} */
 				this.context = undefined;
 
 			/** @type {Root} */
 			this.rootNode = undefined;
+
 			/** @type {Node} */
 			this.parentNode = this.previousNode = this.nextNode = undefined;
-			/** @type {Token} */
+			/** @type {Token | Nodes} */
 			this.previousTokenNode = this.nextTokenNode = undefined;
+
 			/** @type {Node[]} */
 			this.children = undefined;
-			this[Symbol.toStringTag] = nodeType == null ? new.target.name : `${new.target.name} ⟨${nodeType}⟩`;
+			/** @type {Node} */
+			this.firstNode = this.lastNode = undefined;
+			/** @type {Token} */
+			this.firstTokenNode = this.lastTokenNode = undefined;
+			/** @type {TokenizerToken} */
+			this.token = this.firstToken = this.lastToken = undefined;
 			/** @type {TokenizerToken} */
 			this.lastKeyword = this.lastOperator = this.lastBreak = undefined;
+
 			/** @type {string} */
 			this.text = undefined;
 
 			/** @type {string} */
 			this[CurrentConstruct] = undefined;
+			/** @type {Construct[]} */
+			this.constructs = undefined;
 		}
 	}
 
@@ -1577,25 +1589,29 @@ const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() =>
 		}
 	}
 
+	Object.setPrototypeOf(Token.prototype, null);
+
 	class Text extends Node {
 		/** @param {string} text @param {string} nodeType */
 		constructor(text, nodeType) {
 			super(nodeType);
 			this.text = text;
-			this.firstToken = this.lastToken = undefined;
 		}
 	}
 
+	Object.setPrototypeOf(Text.prototype, null);
+
 	class Nodes extends Node {
-		/** @param {string} [nodeType] */
-		constructor(nodeType) {
-			super(nodeType);
-			/** @type {Node} */
-			this.firstNode = this.lastNode = undefined;
-			/** @type {Token} */
-			this.firstTokenNode = this.lastTokenNode = undefined;
-			/** @type {TokenizerToken} */
-			this.firstToken = this.lastToken = undefined;
+		set lastToken(lastToken) {}
+
+		get lastToken() {
+			return this.lastTokenNode && this.lastTokenNode.lastToken;
+		}
+
+		set firstToken(firstToken) {}
+
+		get firstToken() {
+			return this.firstTokenNode && this.firstTokenNode.firstToken;
 		}
 
 		/**
@@ -1610,18 +1626,16 @@ const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() =>
 				: push(this.children, (this.lastNode.nextNode = child));
 			(child.rootNode = (child.parentNode = this).rootNode).nodeCount++;
 			child.previousTokenNode = this.lastTokenNode;
+
 			return (this.lastNode = child);
 		}
 
-		/**
-		 * @param {TokenizerToken} token
-		 * @param {string} [type]
-		 */
-		appendToken(token, type) {
+		/** @param {Nodes | Token} child */
+		appendToken(child) {
 			const {lastTokenNode, lastNode} = this;
-			const child = this.appendChild(new Token(token, type));
+			this.appendChild(child);
 			(child.previousTokenNode = lastTokenNode) === undefined
-				? ((this.firstToken = token), (this.firstTokenNode = child))
+				? (child.firstToken && (this.firstToken = child.token), (this.firstTokenNode = child))
 				: (child.previousTokenNode.nextTokenNode = child);
 			if (lastTokenNode !== undefined && lastTokenNode !== lastNode) {
 				/** @type {Node} */
@@ -1629,7 +1643,7 @@ const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() =>
 				while ((node = node.nextNode) !== lastNode) node.nextTokenNode = child;
 				node.nextTokenNode = child;
 			}
-			this.lastToken = token;
+			child.lastToken && (this.lastToken = child.lastToken);
 			this.lastTokenNode = child;
 			return child;
 		}
@@ -1644,25 +1658,36 @@ const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() =>
 		}
 	}
 
+	Object.setPrototypeOf(Nodes.prototype, null);
+
 	class Root extends Nodes {
 		/** @param {string} [nodeType] */
 		constructor(nodeType) {
 			super(nodeType);
 			this.rootNode = this;
-			this.nodeCount = 0;
 			/** @type {Construct[]} */
 			this.constructs = [];
+
+			// Only unique property
+			this.nodeCount = 0;
 		}
 	}
 
 	class Closure extends Nodes {}
 	class Template extends Nodes {}
-
 	class Construct extends Nodes {}
+
+	{
+		const descriptors = Object.getOwnPropertyDescriptors(Nodes.prototype);
+		delete descriptors.constructor;
+		for (const Nodes of [Root, Closure, Template, Construct]) {
+			Object.setPrototypeOf(Object.defineProperties(Nodes.prototype, descriptors), null);
+		}
+	}
 
 	Object.defineProperty(Construct, 'currentConstruct', {value: CurrentConstruct, writable: false});
 
-	return {Node, Root, Construct, Closure, Template, Text, Source, Binding};
+	return {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding};
 })();
 
 //@ts-check
@@ -1761,7 +1786,7 @@ const Collator = (() => {
 
 				this.tokenContextMap.set(
 					(this.lastContext = tokenContext),
-					node.appendChild(
+					node.appendToken(
 						(this.lastNode = node =
 							flatNodeType === 'string' ? new Template() : new Closure(`${token.group.opener}…${token.group.closer}`)),
 					),
@@ -1857,9 +1882,9 @@ const Collator = (() => {
 					const constructNode = (this.lastNode = this.currentConstructNode = new Construct());
 					RETAIN_TOKEN_CONTEXTS === true && (constructNode.context = tokenContext);
 					node.rootNode.constructs.push(constructNode);
-					node.appendChild(constructNode);
+					node.appendToken(constructNode);
 					constructNode[Construct.currentConstruct] = node[Construct.currentConstruct];
-					constructNode.appendToken(token, (constructNode.text = token.text));
+					constructNode.appendToken(new Token(token, (constructNode.text = token.text)));
 					node[Construct.currentConstruct] = undefined;
 
 					while (this.currentConstructNode === constructNode) {
@@ -1876,6 +1901,7 @@ const Collator = (() => {
 					this.queuedToken = token;
 					this.lastNode = node;
 					this.lastContext = tokenContext;
+
 					return constructNode;
 				} else {
 					if (this.currentConstructNode === node && node[Construct.currentConstruct] === undefined) {
@@ -1886,7 +1912,7 @@ const Collator = (() => {
 				}
 			}
 
-			return node.appendToken(token, type);
+			return node.appendToken(new Token(token, type));
 		}
 
 		throw(error) {
