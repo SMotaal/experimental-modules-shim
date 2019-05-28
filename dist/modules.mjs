@@ -1006,7 +1006,7 @@ const matcher = (ECMAScript =>
         // Defines how to address non-entity character(s):
         entity(
           ECMAScript.Fallthrough({
-            // type: 'fault',
+            type: 'fault',
           }),
         ),
       ),
@@ -1023,7 +1023,15 @@ const matcher = (ECMAScript =>
         ? entity => Matcher.sequence`(
             ${fallthrough}
             ${entity((text, entity, match, state) => {
-              capture(type === 'fault' ? fault(text, state) : type, match, text);
+              capture(
+                type !== 'fault'
+                  ? type || state.context.goal.type || 'sequence'
+                  : state.context.goal !== ECMAScriptGoal
+                  ? state.context.goal.type || 'sequence'
+                  : fault(text, state),
+                match,
+                text,
+              );
               typeof flatten === 'boolean' && (match.flatten = flatten);
             })}
           )`
@@ -1394,10 +1402,7 @@ const {
   const tokenizerProperties = Object.getOwnPropertyDescriptors(
     freeze(
       class Tokenizer {
-        /**
-         * @template {Matcher} T
-         * @template {{}} U
-         */
+        /** @template {Matcher} T @template {{}} U */
         *tokenize() {
           /** @type {Token<U>} */
           // let next;
@@ -1410,26 +1415,31 @@ const {
           /** @type {TokenizerState<T, U>} */
           const state = matcher.state;
           this.initializeState && this.initializeState(state);
-          matcher.exec = matcher.exec; //.bind(matcher);
-          // freeze(matcher);
-          // console.log(this, {string, matcher, state}, [...arguments]);
+          matcher.exec = matcher.exec;
+
           for (
-            let match, token, next, index = 0;
-            // Abort on first failed/empty match
-            ((match = matcher.exec(string)) && match[0] !== '') ||
-            //   but first yield a nextToken if present
-            (state.nextToken = void (next && (yield next)));
-            // We hold back one grace token
-            (token = createToken(match, state)) &&
-            //  until createToken(…) !== undefined (ie new token)
-            //  set the incremental token index for this token
-            //  and keep it referenced directly on the state
-            (((state.nextToken = token).index = index++),
-            //  then yield the previously held token
-            next && (yield next),
-            //  then finally clear the nextToken reference
-            (state.nextToken = void (next = token)))
-          );
+            let match, capturedToken, retainedToken, index = 0;
+            // BAIL on first failed/empty match
+            ((match = matcher.exec(string)) !== null && match[0] !== '') ||
+            //   BUT first yield a nextToken if present
+            (retainedToken !== undefined && (yield retainedToken), (state.nextToken = undefined));
+
+          ) {
+            if ((capturedToken = createToken(match, state)) === undefined) continue;
+
+            // HOLD back one grace token
+            //   until createToken(…) !== undefined (ie new token)
+            //   set the incremental token index for this token
+            //   and keep it referenced directly on the state
+            (state.nextToken = capturedToken).index = index++;
+
+            //   THEN yield a previously held token
+            if (retainedToken !== undefined) yield retainedToken;
+
+            //   THEN finally clear the nextToken reference
+            retainedToken = capturedToken;
+            state.nextToken = undefined;
+          }
 
           this.finalizeState && this.finalizeState(state);
 
@@ -1495,223 +1505,453 @@ const mode = createMatcherMode(matcher, {
 
 const {syntax, tokenizer} = mode;
 
-const Token = class Token {};
-const Unknown = class Unknown extends Token {};
-const Atom = class Atom extends Token {};
+// TODO: Swap to load from source vs. bundles
 
-Object.setPrototypeOf(Token.prototype, null);
-Object.setPrototypeOf(Atom.prototype, null);
-Object.setPrototypeOf(Unknown.prototype, null);
+const CurrentConstruct = Symbol('Construct.currentConstruct');
 
-const Node = (() => {
+//@ts-check
+
+const {Node, Root, Construct, Closure, Template, Text, Source, Binding} = (() => {
 	const push = Function.call.bind(Array.prototype.push);
 
-	/** @extends {ArrayLike<Token | Node | Text>} */
-	class Node extends Array {
-		/**
-		 * @param {tokenizer.Context} context
-		 * @param {Node} [parentNode]
-		 * @param {number} [number]
-		 */
-		constructor(context, parentNode, number) {
-			super();
-			number >= 0 && (this.number = number);
-			this.context = context;
-			/** @type {Token | Node | Text} */
-			this.previousNode = this.nextNode = this.firstNode = this.lastNode = undefined;
-			/** @type {Token} */
-			this.firstToken = this.lastToken = undefined;
-			(this.parentNode = parentNode || undefined) && parentNode.appendChild(this);
+	/** @type {boolean} */
+	const RETAIN_TOKEN_CONTEXTS = false;
+
+	class Binding {}
+
+	class Source {
+		constructor() {
+			/** @type {string} */
+			this.compiledText = undefined;
+			/** @type {Root} */
+			this.rootNode = undefined;
+			/** @type {string[]} */
+			this.fragments = [];
+			/** @type {Binding[]} */
+			this.bindings = undefined;
+			/** @type {Construct[]} */
+			this.constructs = undefined;
 		}
 
-		/** @param {Token | Node | Text} child */
+		toString() {
+			return this.compiledText;
+		}
+	}
+
+	class Node {
+		/** @param {string} [nodeType] */
+		constructor(nodeType) {
+			this.nodeType = nodeType;
+
+			if (new.target.RETAIN_TOKEN_CONTEXTS === true)
+				/** @type {TokenizerContext} */
+				this.context = undefined;
+
+			/** @type {Root} */
+			this.rootNode = undefined;
+			/** @type {Node} */
+			this.parentNode = this.previousNode = this.nextNode = undefined;
+			/** @type {Token} */
+			this.previousTokenNode = this.nextTokenNode = undefined;
+			/** @type {Node[]} */
+			this.children = undefined;
+			this[Symbol.toStringTag] = nodeType == null ? new.target.name : `${new.target.name} ⟨${nodeType}⟩`;
+			/** @type {TokenizerToken} */
+			this.lastKeyword = this.lastOperator = this.lastBreak = undefined;
+			/** @type {string} */
+			this.text = undefined;
+
+			/** @type {string} */
+			this[CurrentConstruct] = undefined;
+		}
+	}
+
+	Node.RETAIN_TOKEN_CONTEXTS = RETAIN_TOKEN_CONTEXTS;
+
+	class Token extends Node {
+		/** @param {TokenizerToken} token @param {string} [nodeType] */
+		constructor(token, nodeType) {
+			super((nodeType == null && token.type) || nodeType);
+			this.text = token.text;
+			this.token = this.firstToken = this.lastToken = token;
+		}
+	}
+
+	class Text extends Node {
+		/** @param {string} text @param {string} nodeType */
+		constructor(text, nodeType) {
+			super(nodeType);
+			this.text = text;
+			this.firstToken = this.lastToken = undefined;
+		}
+	}
+
+	class Nodes extends Node {
+		/** @param {string} [nodeType] */
+		constructor(nodeType) {
+			super(nodeType);
+			/** @type {Node} */
+			this.firstNode = this.lastNode = undefined;
+			/** @type {Token} */
+			this.firstTokenNode = this.lastTokenNode = undefined;
+			/** @type {TokenizerToken} */
+			this.firstToken = this.lastToken = undefined;
+		}
+
+		/**
+		 * @template {Node} T
+		 * @param {T} child
+		 * @returns T
+		 */
 		appendChild(child) {
-			(child.previousNode = this[push((child.parentNode = this), (this.lastNode = child)) - 2])
-				? (child.previousNode.nextNode = child)
-				: (this.firstNode = child);
+			child.previousNode = this.lastNode;
+			this.children === undefined
+				? (this.children = [(this.firstNode = child)])
+				: push(this.children, (this.lastNode.nextNode = child));
+			(child.rootNode = (child.parentNode = this).rootNode).nodeCount++;
+			child.previousTokenNode = this.lastTokenNode;
+			return (this.lastNode = child);
+		}
+
+		/**
+		 * @param {TokenizerToken} token
+		 * @param {string} [type]
+		 */
+		appendToken(token, type) {
+			const {lastTokenNode, lastNode} = this;
+			const child = this.appendChild(new Token(token, type));
+			(child.previousTokenNode = lastTokenNode) === undefined
+				? ((this.firstToken = token), (this.firstTokenNode = child))
+				: (child.previousTokenNode.nextTokenNode = child);
+			if (lastTokenNode !== undefined && lastTokenNode !== lastNode) {
+				/** @type {Node} */
+				let node = this.lastTokenNode;
+				while ((node = node.nextNode) !== lastNode) node.nextTokenNode = child;
+				node.nextTokenNode = child;
+			}
+			this.lastToken = token;
+			this.lastTokenNode = child;
 			return child;
 		}
 
 		/**
 		 * @param {string} text
-		 * @param {string} [type]
-		 * @param {typeof Token} [Species]
+		 * @param {string} type
 		 */
-		appendText(text, type, Species) {
-			return this.appendChild(new (Species || Text)(text, type));
-		}
-
-		/**
-		 * @param {Token} token
-		 * @param {typeof Token} [Species]
-		 */
-		appendToken(token, Species) {
-			if (this.appendChild(token) === token) {
-				Object.setPrototypeOf(token, (Species = Species || Unknown).prototype);
-
-				token[Symbol.toStringTag] = `${Species.name} ‹${token.type}›`;
-
-				(token.previousToken = this.lastToken) && (token.previousToken.nextToken = token);
-				this.lastToken = token;
-				this.firstToken === undefined && (this.firstToken = token);
-			}
-			return token;
+		appendText(text, type) {
+			const child = this.appendChild(new Text(text, type));
+			return child;
 		}
 	}
 
-	Object.defineProperties(Object.setPrototypeOf(Node.prototype, null), {
-		[Symbol.iterator]: Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator),
-	});
+	class Root extends Nodes {
+		/** @param {string} [nodeType] */
+		constructor(nodeType) {
+			super(nodeType);
+			this.rootNode = this;
+			this.nodeCount = 0;
+			/** @type {Construct[]} */
+			this.constructs = [];
+		}
+	}
 
-	return Node;
+	class Closure extends Nodes {}
+	class Template extends Nodes {}
+
+	class Construct extends Nodes {}
+
+	Object.defineProperty(Construct, 'currentConstruct', {value: CurrentConstruct, writable: false});
+
+	return {Node, Root, Construct, Closure, Template, Text, Source, Binding};
 })();
-
-// const BlockClosure = class BlockClosure extends Node {};
-const Root = class Root extends Node {};
-const Closure = class Closure extends Node {};
-
-const Text = class Text extends String {
-	/** @param {string} text @param {string} [type] */
-	constructor(text, type) {
-		super(text);
-		this.text = this;
-		this[Symbol.toStringTag] = `${new.target.name || text} ‹${(this.type = type || 'unknown')}›`;
-	}
-};
 
 //@ts-check
 
-const {compileModuleSourceText, compileFunction} = (({console}) => {
-	const {DEBUG_COMPILER, DEBUG_CONSTRUCTS} = Flags();
+const Collator = (() => {
+	const {RETAIN_TOKEN_CONTEXTS = false} = Root;
+	// const {currentConstruct} = Construct;
 
-	const {log, warn, group, groupCollapsed, groupEnd, table} = console;
-
-	const Collator = class Collator {
+	return class Collator {
 		/** @param {string} goal */
 		constructor(goal) {
 			this.goal = goal;
 			this.declarations = [];
 			this.faults = [];
-			this.map = new WeakMap();
+			this.tokenContextMap = new WeakMap();
 			this.nodeCount = 0;
 			this.tokenCount = 0;
-			/** @type {Node} */
+			/** @type {Root} */
+			this.rootNode = undefined;
+			/** @type {Root | Closure} */
 			this.firstNode = this.lastNode = undefined;
-			/** @type {tokenizer.Token} */
-			this.firstToken = this.lastToken = this.nextToken = undefined;
-			/** @type {tokenizer.Context} */
+			/** @type {TokenizerToken} */
+			this.firstToken = this.lastToken = this.nextToken = this.queuedToken = undefined;
+			/** @type {TokenizerContext} */
 			this.firstContext = this.lastContext = undefined;
+			/** @type {Construct} */
+			this.currentConstructNode = undefined;
+			// /** @type {string} */
+			// this[symbols.Construct]= undefined;
+			this.log = console.log;
 		}
 
-		/**
-		 * @param {tokenizer.Token} token
-		 * @param {tokenizer.Context} tokenContext
-		 */
-		next(token, tokenContext) {
+		/** @param {TokenizerToken} token @param {TokenizerTokens} tokens */
+		collate(token, tokens) {
+			/** @type {Root | Closure} */
 			let node;
-			const {
-				text,
-				type,
-				goal: {name},
-				group,
-				isWhitespace,
-				isDelimiter,
-				isComment,
-				contextDepth,
-				contextNumber,
-				lineNumber,
-				columnNumber,
-				state: {nextToken},
-			} = token;
+			/** @type {string} */
+			let construct;
+			/** @type {string} */
+			let type;
+			/** @type {TokenizerContext} */
+			let tokenContext;
 
-			this.firstNode === undefined
-				? ((this.firstToken = token),
-				  this.map.set(
-						(this.firstContext = tokenContext),
-						(node = this.firstNode = new Root(tokenContext, undefined, this.nodeCount++)),
-				  ))
-				: (tokenContext === this.lastContext && (node = this.lastNode)) ||
-				  ((node = this.map.get(tokenContext)) ||
-						this.map.set(
-							tokenContext,
-							(node = new Closure(tokenContext, this.lastContext && this.map.get(this.lastContext), this.nodeCount++)),
-						));
+			this.nextToken = token.state.nextToken;
 
-			this.lastContext = tokenContext;
-			this.lastNode = node;
-			this.nextToken = nextToken;
+			if (this.queuedToken !== undefined) {
+				if (token !== this.queuedToken)
+					this.throw(
+						new Error(
+							`Invalid token: expecting queued token  [${token.goal.name}:${token.lineNumber}:${token.columnNumber}]`,
+						),
+					);
+				this.queuedToken = undefined;
+			}
+
+			tokenContext = token.state.lastTokenContext;
+
+			if (this.currentConstructNode !== undefined) {
+				node = this.currentConstructNode;
+			} else if (this.firstNode === undefined) {
+				this.firstToken = token;
+				this.tokenContextMap.set(
+					(this.firstContext = this.lastContext = tokenContext),
+					(this.lastNode = node = this.rootNode = this.firstNode = new Root(token.goal.name)),
+				);
+				RETAIN_TOKEN_CONTEXTS === true && (node.context = tokenContext);
+			} else if (
+				(this.lastNode = node =
+					(this.lastContext === tokenContext && this.lastNode) || this.tokenContextMap.get(tokenContext)) !== undefined
+			) {
+				this.lastContext = tokenContext;
+			} else {
+				/** @type {string} */
+				let flatNodeType;
+				this.lastNode = node = this.tokenContextMap.get(this.lastContext);
+
+				switch ((flatNodeType = token.punctuator)) {
+					case 'quote':
+						flatNodeType = 'string';
+						if (token.group.opener === '`') break;
+					case 'comment':
+					case 'pattern':
+						const child = node.appendText(this.flatten(token, tokens), flatNodeType);
+						child.firstToken = token;
+						child.lastToken = this.lastToken;
+						return child;
+					case undefined:
+						break;
+					default:
+						this.throw(
+							new Error(
+								`Invalid delimiter: ${flatNodeType} [${token.goal.name}:${token.lineNumber}:${token.columnNumber}]`,
+							),
+						);
+				}
+
+				this.tokenContextMap.set(
+					(this.lastContext = tokenContext),
+					node.appendChild(
+						(this.lastNode = node =
+							flatNodeType === 'string' ? new Template() : new Closure(`${token.group.opener}…${token.group.closer}`)),
+					),
+				);
+				RETAIN_TOKEN_CONTEXTS === true && (node.context = tokenContext);
+			}
+
+			(this.lastContext === tokenContext && this.lastNode === node) ||
+				this.throw(
+					new Error(
+						`Invalid ${
+							this.lastContext !== tokenContext
+								? `context: ${tokenContext && `${tokenContext.id}[${tokenContext.number}]`} !== ${this.lastContext &&
+										`${this.lastContext.id}[${this.lastContext.number}]`}`
+								: `node:`
+						} [${token.goal.name}:${token.lineNumber}:${token.columnNumber}]`,
+					),
+				);
+
 			this.lastToken = token;
-			// ({firstToken, lastToken, tokens} = node);
 
-			switch (type) {
-				case 'comment':
+			construct = node[Construct.currentConstruct];
+
+			switch ((type = token.type)) {
 				case 'inset':
 				case 'whitespace':
-					return node.appendText(text, type);
-				case 'pattern':
-				case 'quote':
+					return node.appendText(token.text, token.type);
 				case 'number':
 				case 'identifier':
-				case 'operator':
-				case 'keyword':
+					node[Construct.currentConstruct] = undefined;
+					break;
 				case 'break':
-				case 'opener':
-				case 'closer':
-					return node.appendToken(token, Atom);
-				default:
-					return node.appendToken(token);
+					node.lastBreak = token;
+					// TODO: GeneratorMethod
+					if (construct !== undefined && construct.endsWith('async')) {
+						node[Construct.currentConstruct] = undefined;
+					}
+					type = 'break';
+					break;
+				case 'operator': {
+					node.lastOperator = token;
+					switch (token.text) {
+						case '*':
+							if (construct !== undefined && construct.endsWith('function')) {
+								node[Construct.currentConstruct] += '*';
+								// TODO: GeneratorMethod
+								break;
+							}
+						case '.':
+						case ',':
+						case ':':
+						case ';':
+						case '=':
+							node[Construct.currentConstruct] = undefined;
+							type = token.text;
+							break;
+						default:
+							node[Construct.currentConstruct] = undefined;
+					}
+					break;
+				}
+				case 'keyword': {
+					node.lastKeyword = token;
+					switch (token.text) {
+						case 'import':
+						case 'export':
+							type = node[Construct.currentConstruct] = token.text;
+							break;
+						case 'default':
+							if (construct !== 'export') break;
+						case 'async':
+						case 'const':
+						case 'var':
+						case 'let':
+							type = token.text;
+							node[Construct.currentConstruct] =
+								construct === 'import' || construct === 'export' ? `${construct} ${token.text}` : token.text;
+							break;
+						case 'function':
+						case 'class':
+							type = token.text;
+							node[Construct.currentConstruct] = construct === undefined ? token.text : `${construct} ${token.text}`;
+							break;
+						default:
+							node[Construct.currentConstruct] = undefined;
+					}
+					break;
+				}
 			}
+
+			if (node[Construct.currentConstruct] !== construct) {
+				if (this.currentConstructNode === undefined && node[Construct.currentConstruct] !== undefined) {
+					const constructNode = (this.lastNode = this.currentConstructNode = new Construct());
+					RETAIN_TOKEN_CONTEXTS === true && (constructNode.context = tokenContext);
+					node.rootNode.constructs.push(constructNode);
+					node.appendChild(constructNode);
+					constructNode[Construct.currentConstruct] = node[Construct.currentConstruct];
+					constructNode.appendToken(token, (constructNode.text = token.text));
+					node[Construct.currentConstruct] = undefined;
+
+					while (this.currentConstructNode === constructNode) {
+						token = tokens.next().value;
+						if (token.isDelimiter) break;
+						if (this.collate(token, tokens) !== undefined) {
+							constructNode[Symbol.toStringTag] = `Construct ⟨${(constructNode.nodeType =
+								constructNode[Construct.currentConstruct])}⟩`;
+							constructNode.text += token.text;
+							token = undefined;
+						}
+					}
+					this.currentConstructNode = undefined;
+					this.queuedToken = token;
+					this.lastNode = node;
+					this.lastContext = tokenContext;
+					return constructNode;
+				} else {
+					if (this.currentConstructNode === node && node[Construct.currentConstruct] === undefined) {
+						// this.log('construct: %O -> %O', construct, node[symbols.Construct], token);
+						this.currentConstructNode = undefined;
+						return;
+					}
+				}
+			}
+
+			return node.appendToken(token, type);
+		}
+
+		throw(error) {
+			throw error;
+		}
+
+		flatten(token, tokens) {
+			const {contextDepth, state} = token;
+			const text = [token.text];
+			while ((this.nextToken = state.nextToken).contextDepth >= contextDepth) {
+				text.push((this.lastToken = tokens.next().value).text);
+			}
+			return text.join('');
 		}
 	};
+})();
 
-	/** @param {string} text @returns {tokenizer.Tokens} */
+//@ts-check
+
+const {parseModuleSourceText, parseDynamicModuleEvaluator} = (() => {
+	const {DEBUG_COMPILER, DEBUG_CONSTRUCTS, INTERNAL_CONSOLE} = getFlags();
+
+	/** @type {Console} */
+	const console =
+		(globalThis.console && (INTERNAL_CONSOLE !== false && globalThis.console['internal'])) || globalThis.console;
+	const {log, warn, group, groupCollapsed, groupEnd, table} = console;
+
+	/** @param {string} text @returns {TokenizerTokens} */
 	const tokenize = text => tokenizer.tokenize(text, {console});
 
+	/** @param {string} bodyText @param {Source} moduleSourceText */
 	const compileBody = (bodyText, moduleSourceText) => {
-		const {
-			fragments = (moduleSourceText.fragments = []),
-			tokens = (moduleSourceText.tokens = []),
-			bindings = (moduleSourceText.bindings = []),
-		} = moduleSourceText;
+		const {fragments = (moduleSourceText.fragments = [])} = moduleSourceText;
 
+		const tokens = tokenize(bodyText);
 		const collator = new Collator('ECMAScript');
 
-		for (const token of tokenize(bodyText)) {
+		collator.log = log;
+
+		for (const token of tokens) {
 			if (!token || !token.text) continue;
-			let indent;
-			const {
-				text,
-				type,
-				goal: {name: goal},
-				group,
-				state: {
-					lastTokenContext: tokenContext,
-					lastTokenContext: {id: contextId},
-				},
-				lineNumber,
-				columnNumber,
-			} = token;
 
-			// const node = (goal === collator.goal && collator.next(token, tokenContext)) || undefined;
-			const node = collator.next(token, tokenContext) || undefined;
+			const node = collator.collate(token, tokens) || undefined;
+			typeof node.text === 'string' && fragments.push(node.text);
 
-			type === 'whitespace' || tokens.push({node, contextId, type, text, lineNumber, columnNumber, goal, group});
-			fragments.push(type !== 'inset' ? text : indent ? text.replace(indent, '  ') : ((indent = text), '  '));
+			if (collator.queuedToken !== undefined) {
+				const node = collator.collate(collator.queuedToken, tokens) || undefined;
+				typeof node.text === 'string' && fragments.push(node.text);
+			}
 		}
 
-		moduleSourceText.rootNode = collator.firstNode;
+		moduleSourceText.rootNode = collator.rootNode;
+		moduleSourceText.constructs = (moduleSourceText.rootNode = collator.rootNode).constructs;
 
 		return moduleSourceText;
 	};
 
-	const compileModuleSourceText = (bodyText, moduleSourceText) => {
+	const parseModuleSourceText = (bodyText, moduleSourceText) => {
 		compileBody(bodyText, moduleSourceText);
 		moduleSourceText.compiledText = moduleSourceText.fragments.join('');
 
 		return moduleSourceText;
 	};
 
-	const compileFunction = sourceText => {
+	const parseDynamicModuleEvaluator = sourceText => {
 		let bodyText;
 
 		[
@@ -1728,7 +1968,7 @@ const {compileModuleSourceText, compileFunction} = (({console}) => {
 				.replace(/\bmodule\.await[\s\n]*\(/g, 'module.await = (')
 				.replace(/\bmodule\.export\.default[\s\n]*=/g, ' /*‹*/ export default /*›*/ '));
 
-		const moduleSourceText = compileModuleSourceText(bodyText, new ModuleSourceText());
+		const moduleSourceText = parseModuleSourceText(bodyText, new Source());
 
 		moduleSourceText.compiledText = moduleSourceText.compiledText
 			.replace(/ \/\*‹\*\/ export default \/\*›\*\/ /g, 'exports.default =')
@@ -1736,63 +1976,27 @@ const {compileModuleSourceText, compileFunction} = (({console}) => {
 
 		DEBUG_COMPILER &&
 			((DEBUG_CONSTRUCTS ? group : groupCollapsed)(bodyText),
-			// moduleSourceText.moduleSourceText.tokens.map(debugToken),
-			// log(moduleSourceText.compiledText),
 			log(moduleSourceText),
-			// table(moduleSourceText.rootNode, [
-			// 	'tokenNumber',
-			// 	'contextNumber',
-			// 	'contextDepth',
-			// 	Symbol.toStringTag,
-			// 	'text',
-			// 	'lineNumber',
-			// 	'columnNumber',
-			// 	'punctuator',
-			// ]),
+			// moduleSourceText.rootNode.constructs.map(c => log(c, c.nextTokenNode)),
 			groupEnd());
-
-		//  : table(moduleSourceText.tokens)
 
 		return moduleSourceText;
 	};
 
-	class ModuleSourceText {
-		constructor() {
-			/** @type {string} */
-			this.compiledText = undefined;
-			/** @type {Node} */
-			this.rootNode = undefined;
+	return {parseModuleSourceText, parseDynamicModuleEvaluator};
+
+	/** @param {{[name: string]: boolean}} param0 */
+	function getFlags({DEBUG_COMPILER, DEBUG_CONSTRUCTS} = {}) {
+		if (typeof location === 'object' && 'search' in location) {
+			DEBUG_COMPILER = /\bcompiler\b|\bnodes\b/.test(location.search);
+			DEBUG_CONSTRUCTS = /\bnodes\b/.test(location.search);
+		} else if (typeof process === 'object' && process.argv) {
+			DEBUG_COMPILER = process.argv.includes('--compiler') || process.argv.includes('--nodes');
+			DEBUG_CONSTRUCTS = process.argv.includes('--nodes');
 		}
-		toString() {
-			return this.compiledText;
-		}
+		return {DEBUG_COMPILER, DEBUG_CONSTRUCTS};
 	}
-
-	return {compileModuleSourceText, compileFunction};
-})({console: console.internal || console});
-
-/** @typedef {import('/markup/experimental/es/types').Token} tokenizer.Token */
-/** @typedef {Iterable<tokenizer.Token>} tokenizer.Tokens */
-/** @typedef {import('/markup/experimental/es/types').Match} tokenizer.Match */
-/** @typedef {import('/markup/experimental/es/types').Capture} tokenizer.Capture */
-/** @typedef {import('/markup/experimental/es/types').Group} tokenizer.Group */
-/** @typedef {import('/markup/experimental/es/types').Groups} tokenizer.Groups */
-/** @typedef {import('/markup/experimental/es/types').Goal} tokenizer.Goal */
-/** @typedef {import('/markup/experimental/es/types').Context} tokenizer.Context */
-/** @typedef {import('/markup/experimental/es/types').Contexts} tokenizer.Contexts */
-/** @typedef {import('/markup/experimental/es/types').State} tokenizer.State */
-
-/** @param {{[name: string]: boolean}} param0 */
-function Flags({DEBUG_COMPILER, DEBUG_CONSTRUCTS} = {}) {
-	if (typeof location === 'object' && 'search' in location) {
-		DEBUG_COMPILER = /\bcompiler\b|\bnodes\b/.test(location.search);
-		DEBUG_CONSTRUCTS = /\bnodes\b/.test(location.search);
-	} else if (typeof process === 'object' && process.argv) {
-		DEBUG_COMPILER = process.argv.includes('--compiler') || process.argv.includes('--nodes');
-		DEBUG_CONSTRUCTS = process.argv.includes('--nodes');
-	}
-	return {DEBUG_COMPILER, DEBUG_CONSTRUCTS};
-}
+})();
 
 const ModuleEvaluator = (() => {
 	const evaluate = code => (0, eval)(code);
@@ -1812,7 +2016,9 @@ const ModuleEvaluator = (() => {
 		source,
 		sourceText = `${source}`,
 		url: moduleURL,
-		compiledText = rewrite(typeof source === 'function' ? compileFunction(source).compiledText : sourceText),
+		compiledText = rewrite(
+			typeof source === 'function' ? parseDynamicModuleEvaluator(source).compiledText : sourceText,
+		),
 	}) => {
 		let match;
 		const evaluator = evaluate(

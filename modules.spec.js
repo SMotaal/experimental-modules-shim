@@ -23,7 +23,7 @@
 			SCOPES = SPECS,
 			GLOBALS = true,
 			CYCLES = 0,
-			LEVEL = SPECS ? 3 : 2,
+			LEVEL = SPECS ? 3 : 4,
 			DELAY = 1000,
 		} = setup,
 	} = globals().DynamicModules;
@@ -62,8 +62,23 @@
 
 	/// ESX Modules Experiment
 	Modules: {
-		SCOPES &&
-			LEVEL >= 0 &&
+		LEVEL >= 0 &&
+			new DynamicModule(
+				'level-0/module-text',
+				module =>
+					void (() => {
+						// Line comment
+						/* Block comment */
+						'string';
+						`template ${'string'}`;
+						/(regular)[…](expression)/;
+
+						module.export`async function *x() {}`;
+						module.export`class X {}`;
+					}),
+				ModuleScope,
+			) &&
+			SCOPES &&
 			new DynamicModule(
 				'level-0/module-scope',
 				module =>
@@ -168,6 +183,8 @@
 		// module.import`{a as aa} from './circular-aa'`;
 		// module.import`{b} from './circular-b'`;
 		// module.export`{ a, aa }`;
+		// module.export.default = {a, b};
+
 		LEVEL >= 4 &&
 			new DynamicModule(
 				'level-4/circular-a',
@@ -177,7 +194,6 @@
 						module.export`{a as aa} from './circular-aa'`;
 						module.export`{ a }`;
 						let a = 1;
-						// module.export.default = {a, b};
 					}),
 				ModuleScope,
 			) &&
