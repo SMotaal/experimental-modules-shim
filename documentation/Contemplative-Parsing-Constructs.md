@@ -87,11 +87,13 @@ make references against a specific module
 
 If you operate on constructs, you can safely address all three intents without every worrying about the validity of the syntax — ie only consider the minimal criteria for validity that would suffice for the particular disambiguation of intent and leave syntax mattars to the runtime.
 
-More importantly, if you were to try to aggregate constructs together under the assumption that they can determine collectively determine validity, you will inadvertently diminish the constructional validity by extending beyond the reasonable scope of this new collective construct.
+More importantly, if you were to try to aggregate constructs together under the assumption that they can collectively determine syntax validity, you will inadvertently diminish the constructional validity by extending beyond what would be a reasonable scope for such a construct.
 
 For instance, a collective construct that tries to invalidate the above statement can have at least two equally plausible and contradicting scenarios that would need to be factored into it to retain its constructional validity:
 
 1. Ensure that the runtime (or bundler) does not opt for this extra syntax.
 2. Ensure that the spec did not change since last updated your code.
 
-So, while runtime parsers must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operating on texts.
+It is not impossible to do, but the added complexity is exponential and the bottomline is that the more you patching logic to accommodate unforeseen changes, the more you risk breaking existing use cases, and end up either making trade-offs… and so forth.
+
+So, while runtime parsers must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operate on texts.
