@@ -94,4 +94,4 @@ For instance, a collective construct that tries to invalidate the above statemen
 1. Ensure that the runtime (or bundler) does not opt for this extra syntax.
 2. Ensure that the spec did not change since last updated your code.
 
-So, while usual the implementation's own parser must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operating on texts.
+So, while runtime parsers must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operating on texts.
