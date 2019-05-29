@@ -28,38 +28,6 @@
 		} = setup,
 	} = globals().DynamicModules;
 
-	const node = typeof process === 'object';
-
-	const consoleOptions = {};
-
-	Runtime: {
-		const {log, dir, warn, error, group, groupEnd} = console;
-
-		if (typeof console.internal === 'object') {
-			const globalThisSymbol = {[Symbol.toStringTag]: 'globalThis'};
-			consoleOptions.mappings = new Map([[ModuleScope.globalThis, globalThisSymbol], [globalThis, globalThisSymbol]]);
-		}
-		const {toString} = {
-			toString() {
-				const {
-					description = (this.description = `${Function.toString.call(this)}`
-						.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
-						.replace(/^\(([^]*)\)$/, '$1')),
-				} = this;
-				return description;
-			},
-		};
-		const resolvedPromise = Promise.resolve();
-		ModuleScope.test = async (ƒ, ...next) => {
-			node || (ƒ.toString = toString);
-			await (async () => await ƒ())()
-				.then(result => () => dir(result, consoleOptions))
-				.catch(reason => () => (node ? error(`${reason}`.split('\n', 1)[0]) : (reason.stack, error(reason))))
-				.then(log => (node ? group('\n%s', ƒ) : group(ƒ), log(), groupEnd()));
-			if (next.length) return ModuleScope.test(...next);
-		};
-	}
-
 	/// ESX Modules Experiment
 	Modules: {
 		LEVEL >= 0 &&
@@ -73,8 +41,11 @@
 						`template ${'string'}`;
 						/(regular)[…](expression)/;
 
+						// Does not actually export anything :)
 						module.export`async function *x() {}`;
 						module.export`class X {}`;
+						module.export`export //
+						{}`;
 					}),
 				ModuleScope,
 			) &&
@@ -220,15 +191,42 @@
 			null;
 	}
 
-	if (SPECS) {
+	if (!SPECS) return;
+
+	Specs: {
+		const {log, dir, error, group, groupEnd, time, timeEnd} = console;
+		const consoleOptions = {
+			mappings: new Map([[ModuleScope.globalThis, {[Symbol.toStringTag]: 'globalThis'}]]),
+			compact: true,
+		};
+		const inNode = typeof process === 'object';
+
+		const {toString} = {
+			toString() {
+				const {
+					description = (this.description = `${Function.toString.call(this)}`
+						.replace(/^[^]*?=>[\s\n]*([^]*)[\s\n]*$/, '$1')
+						.replace(/^\(([^]*)\)$/, '$1')),
+				} = this;
+				return description;
+			},
+		};
+
+		ModuleScope.test = async (ƒ, ...next) => {
+			inNode || (ƒ.toString = toString);
+			await (async () => await ƒ())()
+				.then(result => () => dir(result, consoleOptions))
+				.catch(reason => () => (inNode ? error(`${reason}`.split('\n', 1)[0]) : (reason.stack, error(reason))))
+				.then(log => (inNode ? group('\n%s', ƒ) : group(ƒ), log(), groupEnd()));
+			if (next.length) return ModuleScope.test(...next);
+		};
+
 		const cycles = (typeof CYCLES === 'number' && CYCLES > 1 && CYCLES) || 1;
 		const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
 
 		const ids = Object.keys(DynamicModule.map);
 		const mark = `${ids.length} Modules`;
 		const namespaces = new Set();
-
-		const {log, dir, error, group, groupEnd, time, timeEnd} = console;
 
 		for (let n = cycles, k = ids.concat([...ids].reverse()); --n; ids.push(...k));
 
@@ -250,7 +248,7 @@
 			let module, evaluator, sourceText, compiledText, moduleURL, namespace;
 			const mark = `Import "${id}"`;
 
-			node && log();
+			inNode && log();
 			group(mark);
 			try {
 				module = {
@@ -270,9 +268,9 @@
 					if (namespaces.has(namespace)) continue;
 					namespaces.add(namespace);
 				}
-				dir({Module: module, Namespace: namespace, Exports: {...namespace}});
+				dir({Module: module, Namespace: namespace, Exports: {...namespace}}, consoleOptions);
 				groupEnd();
-				node && log();
+				inNode && log();
 			}
 
 			// 	const mark = `Import "${id}"`;

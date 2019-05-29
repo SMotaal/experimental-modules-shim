@@ -51,17 +51,17 @@ const {GlobalScope, ModuleScope} = (() => {
 				const local = locals[property];
 				return (
 					(local && local.value === value && local) ||
-					(locals[property] = {
+					((locals[property] = {
 						value,
-						proxy: new Proxy(value, {
-							construct(constructor, argArray, newTarget) {
-								return construct(value, argArray, newTarget);
-							},
-							apply(method, thisArg, argArray) {
-								return thisArg == null || thisArg === receiver ? value(...argArray) : apply(value, thisArg, argArray);
-							},
-						}),
-					})
+						construct(target, argArray, newTarget) {
+							return newTarget === this.proxy ? construct(value, argArray) : construct(value, argArray, newTarget);
+						},
+						apply(method, thisArg, argArray) {
+							return thisArg == null || thisArg === receiver ? value(...argArray) : apply(value, thisArg, argArray);
+						},
+					}),
+					(locals[property].proxy = new Proxy(value, locals[property])),
+					locals[property])
 				).proxy;
 			}
 			return value;
@@ -1507,36 +1507,25 @@ const {syntax, tokenizer} = mode;
 
 // TODO: Swap to load from source vs. bundles
 
-const CurrentConstruct = Symbol('Construct.currentConstruct');
+const Construct = Symbol('Node.construct');
+const Trailer = Symbol('Node.trailer');
+const NextNode = Symbol('Node.nextNode');
+const PreviousNode = Symbol('Node.previousNode');
+const NextTokenNode = Symbol('Node.nextTokenNode');
+const PreviousTokenNode = Symbol('Node.previousTokenNode');
+const ParentNode = Symbol('Node.parentNode');
+const RootNode = Symbol('Node.rootNode');
+const LastKeyword = Symbol('Node.lastKeyword');
+const LastOperator = Symbol('Node.lastOperator');
+const LastBreak = Symbol('Node.lastBreak');
 
 //@ts-check
 
-const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} = (() => {
+const {Node, Root, Construct: Construct$1, Closure, Template, Text, Token} = (() => {
 	const push = Function.call.bind(Array.prototype.push);
 
 	/** @type {boolean} */
 	const RETAIN_TOKEN_CONTEXTS = false;
-
-	class Binding {}
-
-	class Source {
-		constructor() {
-			/** @type {string} */
-			this.compiledText = undefined;
-			/** @type {Root} */
-			this.rootNode = undefined;
-			/** @type {string[]} */
-			this.fragments = [];
-			/** @type {Binding[]} */
-			this.bindings = undefined;
-			/** @type {Construct[]} */
-			this.constructs = undefined;
-		}
-
-		toString() {
-			return this.compiledText;
-		}
-	}
 
 	class Node {
 		/** @param {string} [nodeType] */
@@ -1549,30 +1538,33 @@ const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} =
 				/** @type {TokenizerContext} */
 				this.context = undefined;
 
-			/** @type {Root} */
-			this.rootNode = undefined;
+			/** @type {RootNode} */
+			this[Node.rootNode] = undefined;
 
+			/** @type {ParentNode} */
+			this[Node.parentNode] = undefined;
 			/** @type {Node} */
-			this.parentNode = this.previousNode = this.nextNode = undefined;
-			/** @type {Token | Nodes} */
-			this.previousTokenNode = this.nextTokenNode = undefined;
+			this[Node.previousNode] = this[Node.nextNode] = undefined;
+			/** @type {TokenNode|ParentNode} */
+			this[Node.previousTokenNode] = this[Node.nextTokenNode] = undefined;
 
 			/** @type {Node[]} */
 			this.children = undefined;
 			/** @type {Node} */
 			this.firstNode = this.lastNode = undefined;
-			/** @type {Token} */
+			/** @type {TokenNode} */
 			this.firstTokenNode = this.lastTokenNode = undefined;
 			/** @type {TokenizerToken} */
 			this.token = this.firstToken = this.lastToken = undefined;
+
 			/** @type {TokenizerToken} */
-			this.lastKeyword = this.lastOperator = this.lastBreak = undefined;
+			this[LastKeyword] = this[LastOperator] = this[LastBreak] = undefined;
 
 			/** @type {string} */
 			this.text = undefined;
 
 			/** @type {string} */
-			this[CurrentConstruct] = undefined;
+			this[Construct] = undefined;
 			/** @type {Construct[]} */
 			this.constructs = undefined;
 		}
@@ -1601,7 +1593,7 @@ const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} =
 
 	Object.setPrototypeOf(Text.prototype, null);
 
-	class Nodes extends Node {
+	class Parent extends Node {
 		set lastToken(lastToken) {}
 
 		get lastToken() {
@@ -1614,34 +1606,55 @@ const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} =
 			return this.firstTokenNode && this.firstTokenNode.firstToken;
 		}
 
+		set text(text) {
+			// Object.defineProperty(this, 'text', {value: text, writable: true, enumerable: true});
+		}
+
+		get text() {
+			/** @type {string[]} */
+			let fragments;
+			/** @type {Node} */
+			let node;
+			const {firstNode, lastNode} = this;
+			if (firstNode === undefined) return '';
+			if (firstNode === lastNode) return firstNode.text;
+
+			fragments = [(node = firstNode).text];
+			while ((node = node[Node.nextNode]) !== lastNode) {
+				fragments.push(node.text || '');
+			}
+			node === lastNode && fragments.push(node.text || '');
+			return fragments.join('');
+		}
+
 		/**
 		 * @template {Node} T
 		 * @param {T} child
 		 * @returns T
 		 */
 		appendChild(child) {
-			child.previousNode = this.lastNode;
+			child[Node.previousNode] = this.lastNode;
 			this.children === undefined
 				? (this.children = [(this.firstNode = child)])
-				: push(this.children, (this.lastNode.nextNode = child));
-			(child.rootNode = (child.parentNode = this).rootNode).nodeCount++;
-			child.previousTokenNode = this.lastTokenNode;
+				: push(this.children, (this.lastNode[Node.nextNode] = child));
+			(child[Node.rootNode] = (child[Node.parentNode] = this)[Node.rootNode]).nodeCount++;
+			child[Node.previousTokenNode] = this.lastTokenNode;
 
 			return (this.lastNode = child);
 		}
 
-		/** @param {Nodes | Token} child */
+		/** @param {ParentNode|TokenNode} child */
 		appendToken(child) {
 			const {lastTokenNode, lastNode} = this;
 			this.appendChild(child);
-			(child.previousTokenNode = lastTokenNode) === undefined
+			(child[Node.previousTokenNode] = lastTokenNode) === undefined
 				? (child.firstToken && (this.firstToken = child.token), (this.firstTokenNode = child))
-				: (child.previousTokenNode.nextTokenNode = child);
+				: (child[Node.previousTokenNode][Node.nextTokenNode] = child);
 			if (lastTokenNode !== undefined && lastTokenNode !== lastNode) {
 				/** @type {Node} */
 				let node = this.lastTokenNode;
-				while ((node = node.nextNode) !== lastNode) node.nextTokenNode = child;
-				node.nextTokenNode = child;
+				while ((node = node[Node.nextNode]) !== lastNode) node[Node.nextTokenNode] = child;
+				node[Node.nextTokenNode] = child;
 			}
 			child.lastToken && (this.lastToken = child.lastToken);
 			this.lastTokenNode = child;
@@ -1658,14 +1671,14 @@ const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} =
 		}
 	}
 
-	Object.setPrototypeOf(Nodes.prototype, null);
+	Object.setPrototypeOf(Parent.prototype, null);
 
-	class Root extends Nodes {
+	class Root extends Parent {
 		/** @param {string} [nodeType] */
 		constructor(nodeType) {
 			super(nodeType);
-			this.rootNode = this;
-			/** @type {Construct[]} */
+			this[Node.rootNode] = this;
+			/** @type {ConstructNode[]} */
 			this.constructs = [];
 
 			// Only unique property
@@ -1673,22 +1686,45 @@ const {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding} =
 		}
 	}
 
-	class Closure extends Nodes {}
-	class Template extends Nodes {}
-	class Construct extends Nodes {}
+	class Closure extends Parent {}
+	class Template extends Parent {}
+
+	class Construct$1 extends Parent {}
 
 	{
-		const descriptors = Object.getOwnPropertyDescriptors(Nodes.prototype);
+		const descriptors = Object.getOwnPropertyDescriptors(Parent.prototype);
 		delete descriptors.constructor;
-		for (const Nodes of [Root, Closure, Template, Construct]) {
+		for (const Nodes of [Root, Closure, Template, Construct$1]) {
 			Object.setPrototypeOf(Object.defineProperties(Nodes.prototype, descriptors), null);
 		}
+
+		Object.defineProperty(Node, 'rootNode', {value: RootNode, writable: false});
+		Object.defineProperty(Node, 'parentNode', {value: ParentNode, writable: false});
+		Object.defineProperty(Node, 'nextNode', {value: NextNode, writable: false});
+		Object.defineProperty(Node, 'previousNode', {value: PreviousNode, writable: false});
+		Object.defineProperty(Node, 'nextTokenNode', {value: NextTokenNode, writable: false});
+		Object.defineProperty(Node, 'previousTokenNode', {value: PreviousTokenNode, writable: false});
+		Object.defineProperty(Node, 'construct', {value: Construct, writable: false});
+		Object.defineProperty(Node, 'trailer', {value: Trailer, writable: false});
+		Object.defineProperty(Node, 'lastKeyword', {value: LastKeyword, writable: false});
+		Object.defineProperty(Node, 'lastOperator', {value: LastOperator, writable: false});
+		Object.defineProperty(Node, 'lastBreak', {value: LastBreak, writable: false});
+
+		Object.freeze(Node);
 	}
 
-	Object.defineProperty(Construct, 'currentConstruct', {value: CurrentConstruct, writable: false});
-
-	return {Node, Root, Construct, Closure, Template, Text, Token, Source, Binding};
+	return {Node, Root, Construct: Construct$1, Closure, Template, Text, Token};
 })();
+
+/** @typedef {ContentNode|ParentNode} Node */
+/** @typedef {Text|Token} ContentNode */
+/** @typedef {Text} TextNode */
+/** @typedef {Token} TokenNode */
+/** @typedef {Root|Construct|Closure|Template} ParentNode */
+/** @typedef {Root} RootNode */
+/** @typedef {Construct} ConstructNode */
+/** @typedef {Closure} ClosureNode */
+/** @typedef {Template} TemplateNode */
 
 //@ts-check
 
@@ -1808,7 +1844,7 @@ const Collator = (() => {
 
 			this.lastToken = token;
 
-			construct = node[Construct.currentConstruct];
+			construct = node[Node.construct];
 
 			switch ((type = token.type)) {
 				case 'inset':
@@ -1816,22 +1852,22 @@ const Collator = (() => {
 					return node.appendText(token.text, token.type);
 				case 'number':
 				case 'identifier':
-					node[Construct.currentConstruct] = undefined;
+					node[Node.construct] = undefined;
 					break;
 				case 'break':
-					node.lastBreak = token;
+					node[Node.lastBreak] = token;
 					// TODO: GeneratorMethod
 					if (construct !== undefined && construct.endsWith('async')) {
-						node[Construct.currentConstruct] = undefined;
+						node[Node.construct] = undefined;
 					}
 					type = 'break';
 					break;
 				case 'operator': {
-					node.lastOperator = token;
+					node[Node.lastOperator] = token;
 					switch (token.text) {
 						case '*':
 							if (construct !== undefined && construct.endsWith('function')) {
-								node[Construct.currentConstruct] += '*';
+								node[Node.construct] += '*';
 								// TODO: GeneratorMethod
 								break;
 							}
@@ -1840,20 +1876,20 @@ const Collator = (() => {
 						case ':':
 						case ';':
 						case '=':
-							node[Construct.currentConstruct] = undefined;
+							node[Node.construct] = undefined;
 							type = token.text;
 							break;
 						default:
-							node[Construct.currentConstruct] = undefined;
+							node[Node.construct] = undefined;
 					}
 					break;
 				}
 				case 'keyword': {
-					node.lastKeyword = token;
+					node[Node.lastKeyword] = token;
 					switch (token.text) {
 						case 'import':
 						case 'export':
-							type = node[Construct.currentConstruct] = token.text;
+							type = node[Node.construct] = token.text;
 							break;
 						case 'default':
 							if (construct !== 'export') break;
@@ -1862,41 +1898,46 @@ const Collator = (() => {
 						case 'var':
 						case 'let':
 							type = token.text;
-							node[Construct.currentConstruct] =
+							node[Node.construct] =
 								construct === 'import' || construct === 'export' ? `${construct} ${token.text}` : token.text;
 							break;
 						case 'function':
 						case 'class':
 							type = token.text;
-							node[Construct.currentConstruct] = construct === undefined ? token.text : `${construct} ${token.text}`;
+							node[Node.construct] = construct === undefined ? token.text : `${construct} ${token.text}`;
 							break;
 						default:
-							node[Construct.currentConstruct] = undefined;
+							node[Node.construct] = undefined;
 					}
 					break;
 				}
 			}
 
-			if (node[Construct.currentConstruct] !== construct) {
-				if (this.currentConstructNode === undefined && node[Construct.currentConstruct] !== undefined) {
-					const constructNode = (this.lastNode = this.currentConstructNode = new Construct());
+			if (node[Node.construct] !== construct) {
+				if (this.currentConstructNode === undefined && node[Node.construct] !== undefined) {
+					const constructNode = (this.lastNode = this.currentConstructNode = new Construct$1());
 					RETAIN_TOKEN_CONTEXTS === true && (constructNode.context = tokenContext);
-					node.rootNode.constructs.push(constructNode);
+					node[Node.rootNode].constructs.push(constructNode);
 					node.appendToken(constructNode);
-					constructNode[Construct.currentConstruct] = node[Construct.currentConstruct];
-					constructNode.appendToken(new Token(token, (constructNode.text = token.text)));
-					node[Construct.currentConstruct] = undefined;
+					constructNode[Node.construct] = node[Node.construct];
+					constructNode.appendToken(new Token(token, token.text));
+					// constructNode.appendToken(new Token(token, token.text));
+					node[Node.construct] = undefined;
 
 					while (this.currentConstructNode === constructNode) {
 						token = tokens.next().value;
 						if (token.isDelimiter) break;
-						if (this.collate(token, tokens) !== undefined) {
-							constructNode[Symbol.toStringTag] = `Construct ⟨${(constructNode.nodeType =
-								constructNode[Construct.currentConstruct])}⟩`;
-							constructNode.text += token.text;
-							token = undefined;
-						}
+
+						this.collate(token, tokens) !== undefined &&
+							((constructNode.nodeType = constructNode[Node.construct]), (token = undefined));
+						// if (this.collate(token, tokens) !== undefined) {
+						// 	constructNode[Symbol.toStringTag] = `Construct ⟨${(constructNode.nodeType =
+						// 		constructNode[Node.currentConstruct])}⟩`;
+						// 	// constructNode.text += token.text;
+						// 	token = undefined;
+						// }
 					}
+					constructNode[Symbol.toStringTag] = `Construct ⟨${constructNode.nodeType}⟩`;
 					this.currentConstructNode = undefined;
 					this.queuedToken = token;
 					this.lastNode = node;
@@ -1904,7 +1945,7 @@ const Collator = (() => {
 
 					return constructNode;
 				} else {
-					if (this.currentConstructNode === node && node[Construct.currentConstruct] === undefined) {
+					if (this.currentConstructNode === node && node[Node.construct] === undefined) {
 						// this.log('construct: %O -> %O', construct, node[symbols.Construct], token);
 						this.currentConstructNode = undefined;
 						return;
@@ -1932,22 +1973,104 @@ const Collator = (() => {
 
 //@ts-check
 
-const {parseModuleSourceText, parseDynamicModuleEvaluator} = (() => {
+const {ModuleSource, ModuleBinding} = (() => {
+	/** @param {Partial<ModuleBinding>} [record] */
+	class ModuleBinding {
+		constructor(record) {
+			/** @type {'import'|'export'|'local'} */
+			this.bindingIntent = undefined;
+
+			/** @type {'const'|'let'|'var'|'function'|'class'|'imported'} */
+			this.intrinsicType = undefined;
+
+			/** @type {'exported'|'symbolic'} */
+			this.extrinsicType = undefined;
+
+			/** @type {string} */
+			this.internalIdentifier = this.externalIdentifier = undefined;
+
+			record &&
+				({
+					bindingIntent: this.bindingIntent,
+					intrinsicType: this.intrinsicType,
+					extrinsicType: this.extrinsicType,
+					intrinsicIdentifier: this.internalIdentifier,
+					extrinsicIdentifier: this.externalIdentifier,
+				} = record);
+		}
+	}
+
+	class ModuleSource {
+		/** @param {Partial<ModuleSource>} [record] */
+		constructor(record) {
+			/** @type {string} */
+			this.compiledText = undefined;
+
+			/** @type {string} */
+			this.sourceText = undefined;
+
+			/** @type {string} */
+			this.sourceType = undefined;
+
+			/** @type {RootNode} */
+			this.rootNode = undefined;
+
+			/** @type {string[]} */
+			this.fragments = undefined;
+
+			/** @type {BindingRecord[]} */
+			this.bindings = undefined;
+
+			/** @type {ConstructNode[]} */
+			this.constructs = undefined;
+
+			record &&
+				({
+					compiledText: this.compiledText,
+					sourceText: this.sourceText,
+					sourceType: this.sourceType,
+					rootNode: this.rootNode,
+					fragments: this.fragments,
+					bindings: this.bindings,
+					constructs: this.constructs,
+				} = record);
+		}
+
+		toString() {
+			return this.compiledText;
+		}
+	}
+
+	return {ModuleSource, ModuleBinding};
+})();
+
+/** @typedef {ModuleSource} SourceRecord */
+/** @typedef {ModuleBinding} BindingRecord */
+
+//@ts-check
+
+const {parseModuleText, parseDynamicModuleEvaluator} = (() => {
 	const {DEBUG_COMPILER, DEBUG_CONSTRUCTS, INTERNAL_CONSOLE} = getFlags();
 
 	/** @type {Console} */
 	const console =
 		(globalThis.console && (INTERNAL_CONSOLE !== false && globalThis.console['internal'])) || globalThis.console;
+
 	const {log, warn, group, groupCollapsed, groupEnd, table} = console;
 
 	/** @param {string} text @returns {TokenizerTokens} */
 	const tokenize = text => tokenizer.tokenize(text, {console});
 
-	/** @param {string} bodyText @param {Source} moduleSourceText */
-	const compileBody = (bodyText, moduleSourceText) => {
-		const {fragments = (moduleSourceText.fragments = [])} = moduleSourceText;
+	/** @param {string} sourceText @param {ModuleSource} [sourceRecord] */
+	const compileModule = (sourceText, sourceRecord) => {
+		sourceRecord || (sourceRecord = new ModuleSource({sourceText}));
 
-		const tokens = tokenize(bodyText);
+		/** @type {ModuleSource['fragments']} */
+		const fragments = (sourceRecord.fragments = []);
+		/** @type {ModuleSource['bindings']} */
+		const bindings = (sourceRecord.bindings = []);
+
+		const tokens = tokenize(sourceText);
 		const collator = new Collator('ECMAScript');
 
 		collator.log = log;
@@ -1964,52 +2087,94 @@ const {parseModuleSourceText, parseDynamicModuleEvaluator} = (() => {
 			}
 		}
 
-		moduleSourceText.rootNode = collator.rootNode;
-		moduleSourceText.constructs = (moduleSourceText.rootNode = collator.rootNode).constructs;
+		const {
+			rootNode,
+			rootNode: {constructs},
+		} = collator;
 
-		return moduleSourceText;
+		sourceRecord.rootNode = rootNode;
+		sourceRecord.constructs = constructs;
+		sourceRecord.compiledText = sourceRecord.fragments.join('');
+
+		if (constructs.length) {
+			/** @type {Node} */
+			//@ts-ignore
+			const Void = {};
+			const constructData = {};
+
+			for (const construct of constructs) {
+				// @ts-ignore
+				const {nodeType: constructType, text: constructText} = construct;
+				const trailer = construct[Node.nextTokenNode];
+				const {nodeType: trailerType, text: trailerText} = trailer || Void;
+
+				constructData[`‹${constructType}›~‹${trailerType}›`] = {
+					constructType,
+					trailerType,
+					constructText,
+					trailerText,
+					construct,
+					trailer,
+				};
+				// log('‹%s›~‹%s›\n%o', constructText, followingText, {
+				// 	constructType,
+				// 	constructText,
+				// 	followingType,
+				// 	followingText,
+				// 	construct,
+				// 	next,
+				// });
+			}
+
+			console.table(constructData, ['constructText', 'trailerText']);
+		}
+
+		return sourceRecord;
 	};
 
-	const parseModuleSourceText = (bodyText, moduleSourceText) => {
-		compileBody(bodyText, moduleSourceText);
-		moduleSourceText.compiledText = moduleSourceText.fragments.join('');
-
-		return moduleSourceText;
+	/** @param {string} sourceText @param {ModuleSource} [sourceRecord] */
+	const parseModuleText = (sourceText, sourceRecord) => {
+		sourceRecord
+			? (sourceRecord.sourceText = sourceText)
+			: (sourceRecord = new ModuleSource({sourceText, sourceType: 'module-text'}));
+		return compileModule(sourceText, sourceRecord);
 	};
 
-	const parseDynamicModuleEvaluator = sourceText => {
-		let bodyText;
+	/** @param {Function|string} source @param {ModuleSource} [sourceRecord] */
+	const parseDynamicModuleEvaluator = (source, sourceRecord) => {
+		let sourceText;
 
 		[
 			,
-			bodyText = '',
+			sourceText = '',
 		] = /^[\s\n]*module[\s\n]*=>[\s\n]*void[\s\n]*\([\s\n]*\([\s\n]*\)[\s\n]*=>[\s\n]*\{[ \t]*?\n?([^]*)[\s\n]*\}[\s\n]*\)[\s\n]*;?[\s\n]*$/.exec(
-			sourceText,
+			String(source),
 		);
 
-		bodyText &&
-			(bodyText = bodyText
+		sourceText &&
+			(sourceText = sourceText
 				.replace(/\bmodule\.import`([^`]*)`/g, ' /*‹*/ import $1 /*›*/ ')
 				.replace(/\bmodule\.export`([^`]*)`/g, ' /*‹*/ export $1 /*›*/ ')
 				.replace(/\bmodule\.await[\s\n]*\(/g, 'module.await = (')
 				.replace(/\bmodule\.export\.default[\s\n]*=/g, ' /*‹*/ export default /*›*/ '));
 
-		const moduleSourceText = parseModuleSourceText(bodyText, new Source());
+		sourceRecord
+			? (sourceRecord.sourceType = 'dynamic-module-evaluator')
+			: (sourceRecord = new ModuleSource({sourceText, sourceType: 'dynamic-module-evaluator'}));
+		parseModuleText(sourceText, sourceRecord);
 
-		moduleSourceText.compiledText = moduleSourceText.compiledText
+		sourceRecord.compiledText = sourceRecord.compiledText
 			.replace(/ \/\*‹\*\/ export default \/\*›\*\/ /g, 'exports.default =')
-			.replace(/ \/\*‹\*\/(.*?)\/\*›\*\/ /g, '/*/$1/*/');
+			.replace(/ \/\*‹\*\/([^]*?)\/\*›\*\/ /g, '/*/$1/*/');
 
 		DEBUG_COMPILER &&
-			((DEBUG_CONSTRUCTS ? group : groupCollapsed)(bodyText),
-			log(moduleSourceText),
-			// moduleSourceText.rootNode.constructs.map(c => log(c, c.nextTokenNode)),
-			groupEnd());
-
-		return moduleSourceText;
+			(typeof process === 'object'
+				? log('%s\n%o', sourceText, sourceRecord)
+				: log('%c%s%c\n%o', 'whitespace: pre; font:monospace;', sourceText, '', sourceRecord));
+		return sourceRecord;
 	};
 
-	return {parseModuleSourceText, parseDynamicModuleEvaluator};
+	return {parseModuleText, parseDynamicModuleEvaluator};
 
 	/** @param {{[name: string]: boolean}} param0 */
 	function getFlags({DEBUG_COMPILER, DEBUG_CONSTRUCTS} = {}) {
