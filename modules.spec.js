@@ -23,13 +23,23 @@
 			SCOPES = SPECS,
 			GLOBALS = true,
 			CYCLES = 0,
-			LEVEL = SPECS ? 3 : 4,
+			LEVEL = SPECS ? 3 : 3,
 			DELAY = 1000,
 		} = setup,
 	} = globals().DynamicModules;
 
 	/// ESX Modules Experiment
 	Modules: {
+		new DynamicModule(
+			'level-0/module',
+			module =>
+				void (() => {
+					// TODO: Fix last line comment terminator issue
+					/* module */
+				}),
+			ModuleScope,
+		);
+
 		LEVEL >= 0 &&
 			new DynamicModule(
 				'level-0/module-text',
@@ -44,8 +54,12 @@
 						// Does not actually export anything :)
 						module.export`async function *x() {}`;
 						module.export`class X {}`;
-						module.export`export //
+						module.export` //
 						{}`;
+
+						/*/export/*/ const x = 1;
+						module.export.default = function y() {};
+						module.import`'level-0/module-text'`;
 					}),
 				ModuleScope,
 			) &&
@@ -191,8 +205,6 @@
 			null;
 	}
 
-	if (!SPECS) return;
-
 	Specs: {
 		const {log, dir, error, group, groupEnd, time, timeEnd} = console;
 		const consoleOptions = {
@@ -223,14 +235,30 @@
 
 		const cycles = (typeof CYCLES === 'number' && CYCLES > 1 && CYCLES) || 1;
 		const delay = (typeof DELAY === 'number' && DELAY > 0 && DELAY) || 0;
-
 		const ids = Object.keys(DynamicModule.map);
 		const mark = `${ids.length} Modules`;
+
+		delay && (await new Promise(resolve => setTimeout(resolve, delay)));
+
+		if (!SPECS) {
+			const {log, groupEnd, groupCollapsed, warn} = console.internal || console;
+
+			groupCollapsed(`${ids.length} Modules`);
+			for (const id of ids) {
+				try {
+					await DynamicModule.import(id);
+					log(id);
+				} catch (exception) {
+					warn(id, exception);
+				}
+			}
+			groupEnd();
+			return;
+		}
+
 		const namespaces = new Set();
 
 		for (let n = cycles, k = ids.concat([...ids].reverse()); --n; ids.push(...k));
-
-		delay && (await new Promise(resolve => setTimeout(resolve, delay)));
 
 		group(mark);
 		(({lib, mode, source} = {}) =>

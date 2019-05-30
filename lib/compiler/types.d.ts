@@ -23,3 +23,32 @@ type TokenizerGoal = import('./types/tokenizer').Goal;
 type TokenizerContext = import('./types/tokenizer').Context;
 type TokenizerContexts = import('./types/tokenizer').Contexts;
 type TokenizerState = import('./types/tokenizer').State;
+
+type DescribedPropertyType<D extends PropertyDescriptor = {value: F}, F = any> = D['get'] extends Function
+	? ReturnType<D['get']>
+	: D['value'];
+
+type DescribedType<D extends PropertyDescriptorMap = {}> = {[K in keyof D]: DescribedPropertyType<D[K]>};
+
+// type ReadonlyPropertyDescription = PropertyDecorator & ({get: () => any; set: undefined} | {writable: false});
+
+// type DefinedProperty<K extends PropertyKey, P = PropertyDescriptor, V extends {} = {}> = V &
+// 	(P extends ReadonlyPropertyDescription ? {readonly [K]: DescribedType<P>} : {[K]: DescribedType<P>});
+
+// type DescribedTypes<M = PropertyDescriptorMap, V extends {} = {}> = V & {[K in keyof M]: DescribedType<M[K]>};
+
+// /**
+//  * @template V
+//  * @typedef {() => V} Getter
+//  */
+
+// /**
+//  * @template {PropertyDescriptor} T
+//  * @typedef {T['get'] extends undefined ? T['value'] : ReturnType<T['get']>} Described
+//  */
+
+// /**
+//  * @template {{}} T
+//  * @template {PropertyDescriptorMap} U
+//  * @typedef {T & { [k in keyof U]: U[k]['get'] extends Getter<any> ? ReturnType<U[k]['get']> : U[k]['value'] }} DefinedProperties
+//  */
