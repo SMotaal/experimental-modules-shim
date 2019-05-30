@@ -15,85 +15,121 @@ In contrast they rely on meaningfully framing of productions to identify and ope
 
 This is can be demonstated as follows:
 
-```
-1. Starting with any invariant grammar production:
+<table width:=fill-available margin:=0>
+<colgroup><col><col width:=60%>
+<tbody vertical-align:=middle>
 
-   • ‹export›
+<tr><td>
 
-2. In absolute vaccum, it denotes nothing beyond its form:
+1. Starting with any invariant grammar production
 
-   • Latin sequence — "e" "x" "p" "o" "r" "t"
+<td><center>
 
-3. In a meaningful frame, it distinguishes from other identical forms:
+`‹export›`
 
-   • Module code — syntactic frame (goal)
-   • Word boundary — addressability frame (token)
-   • Keyword — operative frame (role)
+<tr><td>
 
-4. Followed by another, it constructively attributes some intent:
+2. In absolute vaccum, it denotes nothing beyond its form
 
-   • ‹export›~‹default›
-   • ‹export›~‹const›
+<td><center>
 
-5. Followed by anything else, the intent is unambiguous:
+Latin Sequence
 
-   • ‹export›~‹const› ¬ ‹a›
-   • ‹export›~‹const› ¬ ‹{›
-```
+`e` `x` `p` `o` `r` `t`
+
+<tr><td >
+
+3. In a meaningful frame, it distinguishes from other identical forms
+
+<td><table width:=fill-available>
+<tr><td text-align:=right>  Goal (Syntactic)
+<td>                        Module Code
+<tr><td text-align:=right>  Token (Sequential)
+<td>                        Isolated Word
+<tr><td text-align:=right>  Role (Logical)
+<td>                        ECMAScript Keyword
+</table>
+
+<tr><td>
+
+4. Followed by another, it constructively attributes some intent
+
+<td><center>
+
+`‹export›~‹default›`
+
+`‹export›~‹const›`
+
+<tr><td>
+
+5. Followed by anything else, the intent is unambiguous
+
+<td><center>
+
+`‹export›~‹const› ¬ ‹a›`
+
+`‹export›~‹const› ¬ ‹{›`
+
+</table>
 
 A differentiating aspect of constructs is that they neither contribute to or rely upon the syntax validity of the complete text. Because of that they offer latitude and flexibility with the assumption that an incomplete construct has no direct correlation with a syntax error thrown at runtime.
 
-For instance:
+### Motivating Example
+
+If we try to deal with code that is not (yet) standard ECMAScript syntax like:
 
 ```js
 export * as components from 'components';
 ```
 
-While the above is not standard ECMAScript syntax, it contains valid constructs each with unambiguous intents based on sound permutations of productions of the ECMAScript grammar:
+While this is theoretically straightforward from an AST standpoint, it is practically a lot more difficult to properly reconfigure an existing AST library to deal with this syntax.
+
+If we take a constructs approach we can divide this statement into 3 sequentially terminating constructs:
 
 <table width:=fill-available margin:=0>
+<colgroup><col><col width:=60%>
+<tbody vertical-align:=middle text-align:=center>
 
-<tr><td>
+<tr>
+<td>  `‹export›`
+<td>  Declare module export(s)
 
-```
-‹export›
-```
+<tr>
+<td>  `‹*›~‹as›~‹components›`
+<td>  Bind namespace entity
 
-<td>
-
-declare an export binding
-
-<tr><td>
-
-```
-‹*›~‹as›~‹Identifier›
-```
-
-<td>
-
-binding a namespace entity to a specific identifier
-
-<tr><td>
-
-```
-‹from›~‹String›
-```
-
-<td>
-
-make references against a specific module
+<tr>
+<td>  `‹from›~‹'…'›`
+<td>  Link against module
 
 </table>
 
-If you operate on constructs, you can safely address all three intents without every worrying about the validity of the syntax — ie only consider the minimal criteria for validity that would suffice for the particular disambiguation of intent and leave syntax mattars to the runtime.
+Those constructs share the following characteristics:
 
-More importantly, if you were to try to aggregate constructs together under the assumption that they can collectively determine syntax validity, you will inadvertently diminish the constructional validity by extending beyond what would be a reasonable scope for such a construct.
+- [x] Independently valid ECMAScript grammar permutations forming (full or partial) expressions.
+- [x] Semantically aligned with unambiguous intents based on respective permutations of the standard productions of the ECMAScript grammar
+- [x] Do not make claim of the validity of the syntax or any contextual parameters — ie burden let to the consumer.
+- [x] Can be independently addressed and correlated with other constructs for analysis or transformation — ie using partial syntax trees instead of snapshots of a full AST.
 
-For instance, a collective construct that tries to invalidate the above statement can have at least two equally plausible and contradicting scenarios that would need to be factored into it to retain its constructional validity:
+As the ECMAScript specs evolve, one can argue that such constructs will likely remain operatively valid to mutate for effect without worrying about runtime-specifics or artificially mimicing of the complexities of the runtime parser(s).
 
-1. Ensure that the runtime (or bundler) does not opt for this extra syntax.
-2. Ensure that the spec did not change since last updated your code.
+### Early Candidates
 
-It is not impossible to do, but the added complexity is exponential and the bottomline is that the more patching you do to accommodate unforeseen changes, the more you risk breaking existing use cases, and end up making trade-offs with far less clarity… and so forth.
+**Block/Module Scope**
 
-So, while runtime parsers must always work with firm production rules, contemplative parsing can minimize the amount of assumptions it makes by working with constructs to safely operate on texts.
+- [x] Function/Class declaration
+- [x] Variable declaration
+- [ ] Destructuring variable declaration
+- [ ] Parenthesized block declarations
+- [ ] Function/Class expression
+- [ ] Object literal expression
+- [ ] Block expression
+- [ ] Dynamic module specifiers
+- [ ] Calls to `eval`
+- [ ] Assignments **of** eval
+
+**Module Scope**
+
+- [x] Static module specifiers
+- [x] Import bindings
+- [x] Export bindings
