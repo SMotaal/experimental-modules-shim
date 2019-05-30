@@ -2,7 +2,7 @@
 
 ## Disambiguation
 
-> **Work in process**: Please refer to the relevant section of this [log](https://smotaal.io/#/meta/logs/2019/2019-05/2019-05-10-Weekly.md#improve-experimental-ecmascript-matcher) for additional details.
+> **Work in process**: Please refer to the relevant section of this [log](/meta/logs/2019/2019-05/2019-05-10-Weekly.md#improve-experimental-ecmascript-matcher) for additional details.
 
 ### `/` Solidus
 
