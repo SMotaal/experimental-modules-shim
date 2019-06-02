@@ -14,7 +14,7 @@ Abstract logic for a tokenizer-based approach:
     : previousType === 'closer'
     // FIXME: See `{…}` Closures below
     ? previousText === '}'
-    : previousType === 'opener' || previousType === 'keyword'
+    : previousType === 'opener' || previousType === 'keyword')
 ```
 
 ### `{…}` Closures

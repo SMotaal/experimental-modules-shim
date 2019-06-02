@@ -30,6 +30,12 @@ type DescribedPropertyType<D extends PropertyDescriptor = {value: F}, F = any> =
 
 type DescribedType<D extends PropertyDescriptorMap = {}> = {[K in keyof D]: DescribedPropertyType<D[K]>};
 
+// declare global {
+// 	interface Symbol {
+// 		description: string;
+// 	}
+// }
+
 // type ReadonlyPropertyDescription = PropertyDecorator & ({get: () => any; set: undefined} | {writable: false});
 
 // type DefinedProperty<K extends PropertyKey, P = PropertyDescriptor, V extends {} = {}> = V &

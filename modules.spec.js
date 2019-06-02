@@ -35,7 +35,7 @@
 			module =>
 				void (() => {
 					// TODO: Fix last line comment terminator issue
-					/* module */
+					// /* module */
 				}),
 			ModuleScope,
 		);
@@ -51,11 +51,10 @@
 						`template ${'string'}`;
 						/(regular)[…](expression)/;
 
-						// Does not actually export anything :)
-						module.export`async function *x() {}`;
-						module.export`class X {}`;
 						module.export` //
 						{}`;
+						module.export`async function *x() {}`;
+						module.export`class X extends Object {}`;
 
 						/*/export/*/ const x = 1;
 						module.export.default = function y() {};
