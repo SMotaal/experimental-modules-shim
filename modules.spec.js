@@ -24,7 +24,7 @@
 			GLOBALS = true,
 			CYCLES = 0,
 			LEVEL = SPECS ? 3 : 3,
-			DELAY = 1000,
+			DELAY = 0,
 		} = setup,
 	} = globals().DynamicModules;
 
