@@ -14,7 +14,7 @@
 		<script type="module">
 			const {log} = console;
 			(async () => {
-				await import('./dynamicImport.js');
+				await import('/browser/dynamic-import.js');
 				// log(dynamicImport);
 				log(await dynamicImport('./bootstrap.mjs'));
 				// 	await(await import('./bootstrap.mjs')).default;
