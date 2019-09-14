@@ -261,7 +261,7 @@
 
 		group(mark);
 		(({lib, mode, source} = {}) =>
-			log(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(setup);
+			console.warn(`Dynamic Modules «${[lib, source, mode].filter(Boolean).join(' - ') || 'unknown'}»`))(setup);
 		time(mark);
 
 		const Indent = /(?:^|\n)([ \t]+)/;
