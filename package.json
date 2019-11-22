@@ -16,6 +16,5 @@
 	"devDependencies": {
 		"http-server": "*",
 		"rollup": "*",
-		"@smotaal/esm": "SMotaal/esm"
 	}
 }
