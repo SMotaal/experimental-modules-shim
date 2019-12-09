@@ -1,5 +1,5 @@
 {
 	"private": true,
-	"main": "index.js",
+	"main": "index.cjs",
 	"type": "cjs"
 }
