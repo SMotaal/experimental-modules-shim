@@ -310,7 +310,7 @@ const Tokens = Symbol('Tokens');
 
 /** @template {RegExp} T  @implements {MatcherIterator<T>} */
 class MatcherState {
-  /** @param {Partial<MatcherState<T>>} properties */
+  /** @param {Partial<MatcherState<T>> & {initialize?(): void, finalize?(): void}} properties */
   constructor({source, matcher, initialize, finalize, ...properties}) {
     Object.assign(this, properties);
 
@@ -420,7 +420,10 @@ class TokenizerState extends MatcherState {
     return Object.defineProperty(this, Tokens, {value: [], writable: false, configurable: true})[Tokens];
   }
 
-  createToken(match, state) {}
+  /** @template T @returns {T} */
+  createToken(match, state) {
+    return;
+  }
 }
 
 TokenizerState.prototype.previousToken = TokenizerState.prototype.nextToken = /** @type {Token} */ (undefined);
@@ -2442,6 +2445,7 @@ const matcher = (ECMAScript =>
 
 //@ts-check
 
+//@ts-ignore
 const mode = TokenMatcher.createMode(matcher, {
   USE_CONSTRUCTS: false,
 
@@ -2469,6 +2473,7 @@ const mode = TokenMatcher.createMode(matcher, {
 
     if (state.USE_CONSTRUCTS === true && token !== undefined) {
       const {type, text, context = state.nextTokenContext} = token;
+      //@ts-ignore
       if (token.goal === matcher.goal) {
         switch (type) {
           case 'inset':
